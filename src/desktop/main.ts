@@ -42,6 +42,7 @@ let configStore: ConfigStore;
 let updateManager: UpdateManager;
 let compatibilityMonitor: NodeJS.Timeout | undefined;
 let cdpHealthFailures = 0;
+let cdpRecoveryPromise: Promise<void> | undefined;
 let relaySnapshot: import('../remote/remote-relay-client.ts').PersistentRelayRecord[] = [];
 let powerSaveBlockerId: number | undefined;
 
@@ -75,7 +76,7 @@ async function bootstrap(): Promise<void> {
   applyLaunchAtLogin();
   await startStandbyRelay().catch((error) => console.warn(`Standby relay unavailable: ${formatError(error)}`));
   if (app.isPackaged) updateManager.start();
-  compatibilityMonitor = setInterval(() => void monitorOfficialClientCompatibility(), 20_000);
+  compatibilityMonitor = setInterval(() => void monitorOfficialClientCompatibility(), 5_000);
   compatibilityMonitor.unref();
 
   if (process.argv.includes('--start-codex') || process.env.GPTTOOL_START_CODEX === '1') {
@@ -421,29 +422,39 @@ async function monitorOfficialClientCompatibility(): Promise<void> {
   cdpHealthFailures += 1;
   if (cdpHealthFailures < 2) return;
   cdpHealthFailures = 0;
-  const compatibility: OfficialCompatibilityReport = {
-    state: 'incompatible',
-    mode: 'blocked',
-    checkedAt: new Date().toISOString(),
-    officialAppVersion: inspected?.appVersion,
-    features: [{ id: 'cdp-connection', label: '官方客户端连接', required: true, available: false }],
-    message: '官方 ChatGPT 已退出、更新或失去受控连接。GPTTool 已停止接收远程操作，重新启动时会再次检查兼容性。',
-  };
-  await remoteServer?.stop().catch(() => undefined);
-  remoteServer = undefined;
-  relayClient?.updateServiceState('failed', compatibility.message);
-  await orchestrator?.stopCodex().catch(() => undefined);
-  const update = await updateManager.check({ downloadWhenAvailable: config.autoUpdate }).catch(() => updateManager.status);
-  setStatus({
-    ...status,
-    codexState: 'failed',
-    remoteUrls: [],
-    officialClient: inspected ?? status.officialClient,
-    compatibility,
-    message: update.phase === 'downloaded'
-      ? `${compatibility.message} 已下载 GPTTool 更新，请安装后重试。`
-      : compatibility.message,
-  });
+  await recoverHybridControl(inspected);
+}
+
+async function recoverHybridControl(inspected?: DesktopStatus['officialClient']): Promise<void> {
+  if (cdpRecoveryPromise) return cdpRecoveryPromise;
+  cdpRecoveryPromise = (async () => {
+    const message = '官方客户端连接已中断，正在后台恢复官方同步…';
+    relayClient?.updateServiceState('starting', message);
+    setStatus({ ...status, codexState: 'starting', officialClient: inspected ?? status.officialClient, message });
+    await remoteServer?.stop().catch(() => undefined);
+    remoteServer = undefined;
+    await orchestrator?.stopCodex().catch(() => undefined);
+    setStatus({ ...status, codexState: 'stopped', remoteUrls: [], message });
+    await startCodex({ remote: true });
+  })().catch(async (error) => {
+    const compatibility: OfficialCompatibilityReport = {
+      state: 'incompatible',
+      mode: 'blocked',
+      checkedAt: new Date().toISOString(),
+      officialAppVersion: inspected?.appVersion,
+      features: [{ id: 'cdp-connection', label: '官方客户端连接', required: true, available: false }],
+      message: `官方同步自动恢复失败：${formatError(error)}`,
+    };
+    relayClient?.updateServiceState('failed', compatibility.message);
+    const update = await updateManager.check({ downloadWhenAvailable: config.autoUpdate }).catch(() => updateManager.status);
+    setStatus({
+      ...status, codexState: 'failed', remoteUrls: [], compatibility,
+      message: update.phase === 'downloaded'
+        ? `${compatibility.message} 已下载 GPTTool 更新，请安装后重试。`
+        : compatibility.message,
+    });
+  }).finally(() => { cdpRecoveryPromise = undefined; });
+  return cdpRecoveryPromise;
 }
 
 function compatibilityFromError(error: unknown): OfficialCompatibilityReport | undefined {

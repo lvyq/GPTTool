@@ -89,6 +89,7 @@ export class CodexService {
   #pollTimer?: NodeJS.Timeout;
   #polling = false;
   #running = false;
+  #reconnectPromise?: Promise<void>;
   #autoApprove = false;
   #lastAutoApprovalAt = 0;
   #officialTitles: Record<string, string> = {};
@@ -128,6 +129,8 @@ export class CodexService {
     if (this.running) return;
     try {
       await this.#cdp.connect();
+      this.#cdp.off('disconnect', this.#onDisconnect);
+      this.#cdp.off('error', this.#onCdpError);
       this.#cdp.on('disconnect', this.#onDisconnect);
       this.#cdp.on('error', this.#onCdpError);
       // Open the state database now so startup failures are reported before the
@@ -141,6 +144,7 @@ export class CodexService {
       await this.#appServer?.connect().catch(() => undefined);
       await this.#refreshProvider();
       this.#running = true;
+      if (this.#pollTimer) clearInterval(this.#pollTimer);
       this.#pollTimer = setInterval(() => void this.#pollWatchedThreads(), this.#pollIntervalMs);
     } catch (error) {
       await this.stop();
@@ -163,7 +167,7 @@ export class CodexService {
   }
 
   async request<T>(method: string, params?: unknown): Promise<T> {
-    if (!this.running) throw new Error('Codex CDP 服务尚未运行');
+    if (!this.running) await this.#ensureRunning();
     const input = asRecord(params) ?? {};
     switch (method) {
       case 'thread/list':
@@ -301,7 +305,7 @@ export class CodexService {
    * app-server surface. No message is sent and no task is persisted.
    */
   async verifyCompatibility(directory = this.options.cwd || this.#homeDirectory): Promise<OfficialCompatibilityReport> {
-    if (!this.running) throw new Error('Codex CDP 服务尚未运行');
+    if (!this.running) await this.#ensureRunning();
     this.#compatibility = { state: 'checking', mode: 'unknown', features: [], message: '正在检查官方 ChatGPT 兼容性…' };
     if (this.options.compatibilityCheck) {
       this.#compatibility = await this.options.compatibilityCheck();
@@ -645,12 +649,21 @@ export class CodexService {
 
   #onDisconnect = (): void => {
     this.#running = false;
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+    this.#pollTimer = undefined;
   };
 
   #onCdpError = (): void => {
     // WebSocket close handling updates service state. Individual command errors
     // are returned to their caller and should not terminate the desktop app.
   };
+
+  async #ensureRunning(): Promise<void> {
+    if (this.running) return;
+    this.#reconnectPromise ??= this.start().finally(() => { this.#reconnectPromise = undefined; });
+    await this.#reconnectPromise;
+    if (!this.running) throw new Error('Codex CDP 服务尚未运行');
+  }
 }
 
 function modelMatchesRenderer(

@@ -58,6 +58,14 @@ test('checks official-client compatibility after every public Web connection', a
   assert.match(source, /官方客户端版本不兼容/);
 });
 
+test('treats a stopped CDP transport as recoverable instead of a missing task', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+
+  assert.match(source, /CDP\.\*\(\?:尚未运行\|未启动\|not running\)/);
+  assert.match(source, /官方同步正在后台恢复，恢复后会自动重新打开当前任务/);
+  assert.match(source, /if \(connectionFailure\) retryThreadId = threadId/);
+});
+
 test('disables the composer and explains when official Codex quota reaches zero', async () => {
   const [source, stylesheet] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),

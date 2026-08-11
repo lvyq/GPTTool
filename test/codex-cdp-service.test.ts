@@ -7,6 +7,7 @@ import type { CodexThread } from '../src/codex/codex-session-store.ts';
 
 class FakeCdpClient extends EventEmitter {
   connected = false;
+  connectCalls = 0;
   submitted: string[] = [];
   attachedFiles: string[][] = [];
   interrupted = false;
@@ -43,7 +44,7 @@ class FakeCdpClient extends EventEmitter {
   };
   onSubmit?: (text: string) => void;
   preparedModes: string[] = [];
-  async connect(): Promise<void> { this.connected = true; }
+  async connect(): Promise<void> { this.connectCalls += 1; this.connected = true; }
   async close(): Promise<void> { this.connected = false; }
   async waitForComposer(timeoutMs?: number): Promise<void> {
     this.composerWaits.push(timeoutMs);
@@ -97,6 +98,28 @@ class FakeCdpClient extends EventEmitter {
     };
   }
 }
+
+test('reconnects CDP transparently when a remote request arrives after a transient disconnect', async () => {
+  const cdp = new FakeCdpClient();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    sessionStore: new FakeSessionStore() as never,
+    pollIntervalMs: 10,
+  });
+  await service.start();
+  cdp.connected = false;
+  cdp.emit('disconnect');
+
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list', { limit: 50 });
+    assert.equal(list.data[0]?.id, 'thread-1');
+    assert.equal(cdp.connectCalls, 2);
+    assert.equal(service.running, true);
+  } finally {
+    await service.stop();
+  }
+});
 
 class FakeAppServerClient {
   connected = false;

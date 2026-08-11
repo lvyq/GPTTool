@@ -2741,6 +2741,7 @@
   function cleanError(value) {
     const message = String(value || '远程请求失败').replace(/^RPC\s+-?\d+:\s*/i, '');
     if (/no rollout found|thread not loaded/i.test(message)) return '该任务的本地会话记录不存在或尚未生成，请刷新任务列表或新建任务';
+    if (/CDP.*(?:尚未运行|未启动|not running)|官方同步.*(?:中断|未启动)/i.test(message)) return '官方同步正在后台恢复，恢复后会自动重新打开当前任务';
     if (/max payload size exceeded/i.test(message)) return '任务内容较大导致传输中断，正在自动重连';
     return message;
   }
@@ -2749,7 +2750,7 @@
       .replace(/<(environment_context|recommended_plugins|app-context|permissions|apps_instructions|plugins_instructions|skills_instructions|collaboration_mode)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
       .trim();
   }
-  function isConnectionError(value) { return /连接已断开|连接异常|尚未连接|请求超时|max payload size exceeded/i.test(String(value || '')); }
+  function isConnectionError(value) { return /连接已断开|连接异常|尚未连接|请求超时|max payload size exceeded|CDP.*(?:尚未运行|未启动|not running)|官方同步.*(?:中断|未启动)/i.test(String(value || '')); }
   function shortPath(value) { const parts = String(value).split(/[\\/]/).filter(Boolean); return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : value || '本机'; }
   function formatTime(timestamp) {
     const value = Number(timestamp);
