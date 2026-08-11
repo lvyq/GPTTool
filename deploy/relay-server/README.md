@@ -1,0 +1,45 @@
+# GPTTool Relay
+
+多租户 HTTPS/WebSocket 中继，用于把已认证的 Web 会话连接到用户自己绑定的 GPTTool 桌面设备。
+
+生产环境推荐 PostgreSQL。Relay 保存账户、设备、一次性配对、登录会话和设备持久化记录；官方 ChatGPT/Codex 的原始 rollout 与本地数据库仍由桌面端和官方客户端管理。
+
+## 运行
+
+```bash
+cp .env.example .env
+# 修改 .env 后，通过进程管理器加载；不要提交它。
+npm ci --omit=dev
+set -a && . ./.env && set +a
+node server.mjs
+```
+
+完整服务器配置见 [`../../docs/SELF_HOSTING.zh-CN.md`](../../docs/SELF_HOSTING.zh-CN.md)。
+
+## 存储后端
+
+- 设置 `ASTERGATE_POSTGRES_HOST`：使用 PostgreSQL（推荐）；
+- 仅设置 `ASTERGATE_MYSQL_HOST`：兼容旧 MySQL 部署；
+- 均不设置：使用本地 JSON，仅适合开发与测试。
+
+PostgreSQL 启用时会自动创建 schema，并可一次性迁移旧 JSON/MySQL 数据。迁移前请备份。
+
+## 独立 Web UI 发布
+
+根目录运行 `npm run build:web` 生成 `public/`。Web UI 有独立版本号，不修改 Electron 版本；仅协议、桌面服务或 Electron 变化时才需要重新发桌面安装包。
+
+生产发布命令不包含默认主机。使用：
+
+```bash
+GPTTOOL_WEB_DEPLOY_HOST='deploy@gpttool.example.com' \
+GPTTOOL_WEB_DEPLOY_DIR='/opt/gpttool-relay/public/' \
+npm run deploy:web
+```
+
+## 安全要求
+
+- Relay 只监听 `127.0.0.1`，公网必须由 HTTPS Nginx 代理；
+- 环境文件位于仓库外并限制为 `0640` 或更严格；
+- PostgreSQL 不对公网开放；
+- 定期备份、轮换数据库口令并检查登录/配对限流；
+- 不在日志中记录 Cookie、设备 secret、消息或附件正文。

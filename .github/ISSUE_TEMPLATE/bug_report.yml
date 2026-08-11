@@ -1,0 +1,45 @@
+name: Bug report
+description: 报告可复现的问题（不要提交凭据或用户数据）
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 提交前请删除截图和日志中的账号、Token、目录隐私及服务器信息。
+  - type: input
+    id: version
+    attributes:
+      label: GPTTool 版本
+      placeholder: 0.1.5 / commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options: [macOS Apple Silicon, macOS Intel, Windows 11, Windows 10, Relay / Linux, Mobile Web]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 连接模式
+      options: [官方同步（CDP + app-server）, 独立服务（app-server）, 不适用]
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请提供最小、稳定的复现步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志
+      render: shell

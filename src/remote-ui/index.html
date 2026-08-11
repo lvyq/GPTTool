@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#070807" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GPTTool" />
+    <title>GPTTool Remote Codex</title>
+    <link rel="icon" href="gpttool-logo.png?v=20260726-fullbleed" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260726-fullbleed" />
+    <link rel="stylesheet" href="remote.css?v=20260803-picker" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside id="sidebar">
+        <div class="brand"><span><img src="gpttool-logo.png?v=20260726-fullbleed" alt="" /></span><div><strong>GPTTool</strong><small>远程工作空间</small></div><button id="closeSidebar" class="close-drawer" aria-label="关闭菜单">×</button></div>
+        <button id="newThread" class="primary">＋ 新建任务</button>
+        <div class="list-title"><span>本机任务</span><button id="refreshThreads" title="刷新">↻</button></div>
+        <div id="threadList" class="thread-list"><p class="muted">正在连接本机 Codex…</p></div>
+        <div id="connection" class="connection offline"><i></i><span>连接中</span></div>
+      </aside>
+      <button id="drawerBackdrop" class="drawer-backdrop" aria-label="关闭菜单"></button>
+
+      <main id="chatPane">
+        <header>
+          <button id="showThreads" class="mobile-only menu-button" aria-label="打开任务列表"><span></span><span></span><span></span></button>
+          <div class="thread-heading">
+            <h1 id="threadTitle">远程 Codex</h1>
+            <p id="threadMeta">选择一个任务，或创建新任务</p>
+            <p id="composerError" class="header-error" role="alert"></p>
+          </div>
+          <div class="header-actions">
+            <button id="showUsage" type="button" class="header-icon-button usage-summary-button" aria-label="查看剩余额度" title="正在读取剩余额度" aria-expanded="false"><span class="usage-ring" aria-hidden="true"><span id="usagePercent">--</span></span></button>
+            <div id="usagePopover" class="usage-popover hidden" role="status">
+              <strong id="usageDetail">正在读取剩余额度…</strong>
+              <small id="usageReset">数据来自本机官方客户端</small>
+            </div>
+            <button id="showTaskSettings" type="button" class="header-icon-button task-settings-button" aria-label="打开任务设置" title="任务设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19 13.2 1.4 1.1-1.8 3.1-1.7-.7a7.5 7.5 0 0 1-2.1 1.2l-.2 1.8h-3.6l-.2-1.8a7.5 7.5 0 0 1-2.1-1.2l-1.7.7-1.8-3.1 1.4-1.1a7.9 7.9 0 0 1 0-2.4L5.2 9.7 7 6.6l1.7.7a7.5 7.5 0 0 1 2.1-1.2l.2-1.8h3.6l.2 1.8a7.5 7.5 0 0 1 2.1 1.2l1.7-.7 1.8 3.1-1.4 1.1a7.9 7.9 0 0 1 0 2.4Z"/></svg></button>
+          </div>
+          <div id="runStatus" class="run-status hidden" role="status" aria-live="polite"><span>Codex 工作中</span></div>
+        </header>
+        <section id="emptyState" class="empty-state">
+          <div class="logo"><img src="gpttool-logo.png?v=20260726-fullbleed" alt="" /></div>
+          <span class="empty-eyebrow">REMOTE WORKSPACE</span>
+          <h2>继续你的 Codex 工作</h2>
+          <p>连接本机任务、发送指令，并在一个干净的移动工作空间中查看执行进度。</p>
+          <div class="empty-actions">
+            <button id="emptyNew" class="primary">＋ 新建任务</button>
+            <button id="chooseExistingTask" class="task-picker" type="button">
+              <span class="task-picker-icon" aria-hidden="true">☷</span>
+              <span class="task-picker-copy"><strong>选择已有任务</strong><small id="existingTaskCount">正在读取任务列表…</small></span>
+              <span class="task-picker-chevron" aria-hidden="true">⌄</span>
+            </button>
+          </div>
+        </section>
+        <section id="messages" class="messages hidden" role="log" aria-live="polite" aria-relevant="additions text"></section>
+        <section id="approvalArea" class="approval-area">
+          <article id="queuePanel" class="queue-panel hidden" role="region" aria-labelledby="queueTitle" aria-busy="false">
+            <button id="queueToggle" class="queue-header" type="button" aria-expanded="true" aria-controls="queueList">
+              <strong id="queueTitle">接下来</strong>
+              <span id="queueCount" class="queue-count" role="status" aria-live="polite"></span>
+              <span class="queue-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div id="queueList" class="queue-list" role="list"></div>
+          </article>
+          <div id="approvalRequests"></div>
+        </section>
+        <form id="composer" class="composer hidden">
+          <input id="filePicker" class="visually-hidden" type="file" multiple />
+          <div id="attachmentTray" class="attachment-tray hidden" aria-label="已选择的附件" aria-live="polite"></div>
+          <div class="composer-tools-wrap">
+            <button id="attachFiles" type="button" class="attach-button" aria-label="打开输入选项" aria-expanded="false" aria-controls="composerToolsMenu" title="输入选项">＋</button>
+            <div id="composerToolsMenu" class="composer-tools-menu hidden" role="menu" aria-label="输入选项">
+              <button id="modeGoal" type="button" role="menuitem">
+                <span class="composer-tool-icon goal-icon" aria-hidden="true">◎</span>
+                <span><strong>目标模式</strong><small>持续推进，直到达到完成标准</small></span>
+              </button>
+              <button id="modePlan" type="button" role="menuitem">
+                <span class="composer-tool-icon plan-icon" aria-hidden="true">≡</span>
+                <span><strong>计划模式</strong><small>先分析、澄清，再给出执行计划</small></span>
+              </button>
+              <button id="menuAttach" class="attachment-menu-item" type="button" role="menuitem">
+                <span class="composer-tool-icon composer-attachment-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+                </span>
+                <span><strong>图片或文件</strong><small>每条消息最多 5 个</small></span>
+                <span id="menuAttachCount" class="attachment-limit-count" aria-label="已选择 0 个，最多 5 个">0/5</span>
+              </button>
+            </div>
+          </div>
+          <div class="composer-box">
+            <button id="composerMode" class="composer-mode hidden" type="button" aria-label="取消所选模式"></button>
+            <textarea id="prompt" rows="1" placeholder="给 Codex 发送任务…" aria-label="给 Codex 发送任务" aria-describedby="composerMode composerError voiceStatus"></textarea>
+            <button id="voiceInput" type="button" class="voice-button" aria-label="开始语音输入" aria-pressed="false" title="开始语音输入" hidden disabled>
+              <span class="voice-button-label">点击开始语音输入</span>
+              <span class="voice-level" aria-hidden="true"><i></i><i></i><i></i></span>
+            </button>
+            <button id="voiceModeToggle" type="button" class="input-mode-toggle" aria-label="切换到语音输入" title="切换到语音输入" hidden disabled>
+              <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6.5 10.5a5.5 5.5 0 0 0 11 0M12 16v4M9 20h6"/></svg>
+              <svg class="keyboard-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 9h.01M10 9h.01M13 9h.01M16 9h.01M7 12h.01M10 12h.01M13 12h.01M16 12h.01M7 15h10"/></svg>
+            </button>
+            <span id="voiceStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+          </div>
+          <button id="stopTurn" type="button" class="stop-button hidden" aria-label="停止当前任务">■</button>
+          <button id="send" type="submit" class="primary send-button" aria-label="发送">↑</button>
+        </form>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <dialog id="newThreadDialog" class="new-thread-dialog" aria-labelledby="newThreadDialogTitle">
+      <button id="closeNewThreadDialog" type="button" class="settings-close" aria-label="关闭新建任务">×</button>
+      <form id="newThreadForm">
+        <section id="directoryPickerView" class="directory-picker-view">
+          <span class="eyebrow">新建任务</span>
+          <h2 id="newThreadDialogTitle">选择项目目录</h2>
+          <p class="new-thread-intro">选择一个最近使用的项目，或浏览这台电脑上的其他文件夹。</p>
+          <div id="projectDirectoryList" class="project-directory-list" role="radiogroup" aria-label="项目目录"></div>
+          <button id="browseProjectDirectory" type="button" class="project-directory-browse">
+            <span class="project-directory-browse-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5h6l1.8 2h9.2v8.8a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V7.5Z"/><path d="M3.5 10h17"/></svg></span>
+            <span><strong>浏览其他文件夹</strong><small>从电脑中选择项目目录</small></span><b>›</b>
+          </button>
+          <p id="newThreadStatus" class="settings-status" role="status" aria-live="polite"></p>
+          <button id="confirmNewThread" type="submit" class="primary new-thread-confirm">在此目录新建任务</button>
+        </section>
+        <section id="directoryBrowser" class="directory-browser hidden" aria-label="本机目录浏览器">
+          <header class="directory-browser-header">
+            <button id="closeDirectoryBrowser" type="button" aria-label="返回最近使用的目录">‹</button>
+            <div><span class="eyebrow">选择文件夹</span><h2>浏览这台电脑</h2></div>
+          </header>
+          <div class="directory-browser-location">
+            <button id="directoryBrowserUp" type="button" aria-label="返回上一级"><span>↑</span><small>上一级</small></button>
+            <div><small>当前位置</small><strong id="directoryBrowserPath"></strong></div>
+          </div>
+          <div id="directoryBrowserList" class="directory-browser-list"></div>
+          <details class="directory-create-panel">
+            <summary>＋ 新建文件夹</summary>
+            <div><input id="directoryCreateName" type="text" maxlength="120" autocomplete="off" placeholder="文件夹名称" /><button id="createProjectDirectory" type="button">创建</button></div>
+          </details>
+          <button id="selectCurrentDirectory" type="button" class="primary directory-browser-select">在当前文件夹新建任务</button>
+        </section>
+      </form>
+    </dialog>
+    <dialog id="renameDialog" class="rename-dialog" aria-labelledby="renameDialogTitle">
+      <button id="closeRenameDialog" type="button" class="settings-close" aria-label="关闭重命名">×</button>
+      <span class="eyebrow">任务名称</span>
+      <h2 id="renameDialogTitle">重命名任务</h2>
+      <p class="rename-hint">新名称会同步到本机官方 Codex 客户端。</p>
+      <form id="renameForm">
+        <label class="rename-field" for="renameInput"><span>新名称</span><input id="renameInput" type="text" maxlength="200" autocomplete="off" /></label>
+        <p id="renameStatus" class="settings-status" role="status" aria-live="polite"></p>
+        <button id="confirmRename" type="submit" class="primary rename-confirm">保存名称</button>
+      </form>
+    </dialog>
+    <dialog id="taskSettingsDialog" class="task-settings-dialog">
+      <button id="closeTaskSettings" type="button" class="settings-close" aria-label="关闭任务设置">×</button>
+      <span class="eyebrow">任务设置</span>
+      <h2>模型、强度与审批</h2>
+      <section class="settings-section">
+        <div class="settings-section-heading"><strong>模型与推理强度</strong><small>选项来自本机官方客户端，不同模型会显示各自支持的强度。</small></div>
+        <div class="settings-field slider-field">
+          <div class="slider-heading"><span>模型</span><strong id="modelValue">正在读取…</strong></div>
+          <div class="discrete-slider">
+            <input id="modelSlider" type="range" min="0" max="0" step="1" value="0" aria-label="选择模型" disabled />
+            <div id="modelTicks" class="slider-ticks" aria-hidden="true"></div>
+          </div>
+          <select id="modelSelect" class="slider-select" tabindex="-1" aria-hidden="true"></select>
+        </div>
+        <div class="settings-field slider-field">
+          <div class="slider-heading"><span>推理强度</span><strong id="effortValue">正在读取…</strong></div>
+          <div class="discrete-slider">
+            <input id="effortSlider" type="range" min="0" max="0" step="1" value="0" aria-label="选择推理强度" disabled />
+            <div id="effortTicks" class="slider-ticks" aria-hidden="true"></div>
+          </div>
+          <select id="effortSelect" class="slider-select" tabindex="-1" aria-hidden="true"></select>
+        </div>
+        <button id="saveIntelligence" type="button" class="primary settings-save">应用模型设置</button>
+        <p id="intelligenceStatus" class="settings-status" role="status" aria-live="polite">正在读取官方客户端设置…</p>
+      </section>
+      <section class="settings-section">
+        <div class="settings-section-heading"><strong>审批与后台控制</strong><small>控制当前设备上的自动审批行为。</small></div>
+        <label class="settings-toggle">
+          <span><strong>自动批准官方客户端审批</strong><small>检测到“批准 / 允许”确认框时，在后台自动选择一次性批准。</small></span>
+          <input id="autoApprovalToggle" type="checkbox" role="switch" />
+        </label>
+        <p class="settings-warning">开启后，Codex 请求的命令执行和文件修改可能无需逐次确认。不会选择“始终批准”，也不会自动回答开放式问题。</p>
+        <p id="autoApprovalStatus" class="settings-status" role="status" aria-live="polite">正在读取设置…</p>
+      </section>
+    </dialog>
+    <dialog id="imageViewer" class="image-viewer" aria-label="图片预览">
+      <div class="image-viewer-toolbar">
+        <span id="imageViewerName">图片预览</span>
+        <a id="imageViewerDownload" class="image-viewer-action" download>下载</a>
+        <button id="closeImageViewer" type="button" class="image-viewer-close" aria-label="关闭图片预览">×</button>
+      </div>
+      <div class="image-viewer-stage"><img id="imageViewerImage" alt="" /></div>
+    </dialog>
+    <script src="remote.js?v=20260803-picker"></script>
+  </body>
+</html>

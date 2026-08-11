@@ -1,0 +1,122 @@
+{
+  "name": "gpttool-desktop",
+  "version": "0.1.5",
+  "description": "Cross-platform remote workspace for Codex",
+  "author": "lvyq and GPTTool contributors",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lvyq/GPTTool.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lvyq/GPTTool/issues"
+  },
+  "keywords": [
+    "codex",
+    "remote-workspace",
+    "electron",
+    "app-server",
+    "cdp",
+    "self-hosted"
+  ],
+  "type": "module",
+  "main": "dist/desktop/main.js",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:gateway": "node scripts/build-gateway.mjs",
+    "build:web": "node scripts/build-web-ui.mjs",
+    "check": "tsc --noEmit",
+    "deploy:web": "node scripts/deploy-web-ui.mjs",
+    "dev": "npm run build && electron .",
+    "start": "electron .",
+    "test": "tsx --test test/*.test.ts",
+    "pack:dir": "npm run build && electron-builder --dir",
+    "pack": "npm run build && electron-builder",
+    "release:feed": "node scripts/create-update-feed.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "sql.js": "^1.14.1",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/sql.js": "^1.4.11",
+    "@types/ws": "^8.18.0",
+    "electron": "^43.1.1",
+    "electron-builder": "26.0.12",
+    "esbuild": "^0.25.0",
+    "jsqr": "^1.4.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.gpttool.desktop",
+    "productName": "GPTTool",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "LICENSE",
+      "NOTICE",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "afterPack": "scripts/after-pack.cjs",
+    "extraResources": [
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "NOTICE",
+        "to": "NOTICE.txt"
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSE",
+        "to": "LICENSE.electron.txt"
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSES.chromium.html",
+        "to": "LICENSES.chromium.html"
+      }
+    ],
+    "mac": {
+      "icon": "assets/icon.png",
+      "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
+      },
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

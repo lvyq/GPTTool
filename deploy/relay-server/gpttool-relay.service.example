@@ -1,0 +1,24 @@
+[Unit]
+Description=GPTTool secure remote relay
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gpttool
+Group=gpttool
+WorkingDirectory=/opt/gpttool-relay
+EnvironmentFile=/etc/gpttool-relay.env
+ExecStart=/usr/bin/node /opt/gpttool-relay/server.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gpttool-relay /opt/gpttool-relay
+StateDirectory=gpttool-relay
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

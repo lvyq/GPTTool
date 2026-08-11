@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>GPTTool 远程设备</title>
+    <meta name="theme-color" content="#070807" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GPTTool" />
+    <link rel="icon" href="gpttool-logo.png?v=20260726-fullbleed" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260726-fullbleed" />
+    <link rel="stylesheet" href="gateway.css?v=20260810-remote-wake" />
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <main class="gateway">
+      <header class="app-header">
+        <div class="brand">
+          <div class="logo"><img src="gpttool-logo.png?v=20260726-fullbleed" alt="" /></div>
+          <div><h1>GPTTool</h1><p>你的远程工作空间</p></div>
+        </div>
+        <div class="secure-badge"><span aria-hidden="true">●</span> 安全连接</div>
+      </header>
+
+      <section id="loginView" class="login-layout hidden">
+        <div class="login-intro">
+          <span class="eyebrow">REMOTE WORKSPACE</span>
+          <h2>把工作现场<br />装进口袋</h2>
+          <p>连接自己的电脑，查看 Codex 任务进度，并从任意设备自然地继续工作。</p>
+          <div class="trust-list" aria-label="产品特性">
+            <span><i>✓</i> 设备隔离</span>
+            <span><i>✓</i> 加密传输</span>
+            <span><i>✓</i> 随时断开</span>
+          </div>
+        </div>
+        <article class="surface login-card">
+          <div class="section-icon" aria-hidden="true"><span></span><span></span></div>
+          <div id="authTabs" class="auth-tabs" aria-label="账号入口">
+            <button id="showLogin" class="active" type="button" aria-selected="true">登录</button>
+            <button id="showRegister" type="button" aria-selected="false">注册</button>
+          </div>
+          <span id="authEyebrow" class="eyebrow">账号登录</span>
+          <h3 id="authTitle">欢迎回来</h3>
+          <p id="authDescription">登录后仅显示绑定到当前账号的设备。</p>
+          <div id="pairingNotice" class="pairing-notice hidden"><span aria-hidden="true">✓</span><div><strong>已识别配对二维码</strong><small>登录后将自动绑定这台设备</small></div></div>
+          <form id="loginForm">
+            <label for="loginUsername">账号</label>
+            <div class="input-shell"><span class="field-icon user-icon" aria-hidden="true"></span><input id="loginUsername" autocomplete="username" placeholder="请输入账号" required /></div>
+            <label for="loginPassword">密码</label>
+            <div class="input-shell"><span class="field-icon lock-icon" aria-hidden="true"></span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="请输入密码" required /></div>
+            <button class="primary login-submit" type="submit"><span>登录</span><b aria-hidden="true">→</b></button>
+            <button id="loginToRegister" class="auth-switch" type="button">没有账号？立即注册</button>
+          </form>
+          <form id="registerForm" class="hidden">
+            <label for="registerUsername">账号</label>
+            <div class="input-shell"><span class="field-icon user-icon" aria-hidden="true"></span><input id="registerUsername" autocomplete="username" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._@-]{2,63}" placeholder="3–64 位字母、数字或 . _ @ -" required /></div>
+            <label for="registerPassword">设置密码</label>
+            <div class="input-shell"><span class="field-icon lock-icon" aria-hidden="true"></span><input id="registerPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="至少 10 位字符" required /></div>
+            <label for="confirmPassword">确认密码</label>
+            <div class="input-shell"><span class="field-icon lock-icon" aria-hidden="true"></span><input id="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="再次输入密码" required /></div>
+            <div class="registration-honeypot" aria-hidden="true"><label for="website">网站</label><input id="website" tabindex="-1" autocomplete="off" /></div>
+            <p class="password-hint">账号创建后会自动登录，每个账号的设备与任务相互隔离。</p>
+            <button class="primary login-submit" type="submit"><span>创建账号</span><b aria-hidden="true">→</b></button>
+            <button id="registerToLogin" class="auth-switch" type="button">已有账号？返回登录</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="devicesView" class="hidden">
+        <div class="toolbar">
+          <div><span class="eyebrow">工作空间</span><h2 id="welcome">我的设备</h2><p>选择在线设备，继续本机上的 Codex 任务。</p></div>
+          <div class="toolbar-actions">
+            <button id="showAccountSettings" class="flat-action" type="button">设置</button>
+            <button id="logout" class="flat-action logout-action" type="button">退出</button>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="device-section" aria-labelledby="deviceHeading">
+            <div class="section-heading"><div><span class="eyebrow">设备</span><h3 id="deviceHeading">已绑定设备</h3></div><span id="deviceCount" class="count-badge">0 台</span></div>
+            <div id="deviceList" class="devices"></div>
+          </section>
+
+          <article class="surface pairing">
+            <div class="pairing-copy">
+              <div>
+                <span class="pairing-kicker">添加设备</span>
+                <h3>连接新电脑</h3>
+                <p>在电脑端打开 GPTTool 配对二维码，然后用手机完成绑定。</p>
+              </div>
+              <span class="pairing-method">推荐方式</span>
+            </div>
+            <button id="startQrScanner" class="scan-pairing" type="button">
+              <span class="scan-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 21H5a2 2 0 0 1-2-2v-2M17 21h2a2 2 0 0 0 2-2v-2" />
+                  <rect x="7" y="8" width="10" height="8" rx="2" />
+                  <circle cx="12" cy="12" r="2.2" />
+                </svg>
+              </span>
+              <span><strong>打开相机扫码</strong><small>扫描电脑端的 GPTTool 配对二维码</small></span>
+              <b aria-hidden="true">→</b>
+            </button>
+            <div class="pairing-flow" aria-label="设备绑定步骤">
+              <span><b>1</b> 电脑显示二维码</span>
+              <i aria-hidden="true">→</i>
+              <span><b>2</b> 手机扫码</span>
+              <i aria-hidden="true">→</i>
+              <span><b>3</b> 自动绑定</span>
+            </div>
+          </article>
+
+        </div>
+      </section>
+      <dialog id="accountDialog" class="account-dialog" aria-labelledby="accountDialogTitle">
+        <button id="closeAccountSettings" class="dialog-close" type="button" aria-label="关闭账号设置">×</button>
+        <span class="eyebrow">账号与安全</span>
+        <h3 id="accountDialogTitle">修改登录密码</h3>
+        <p>更新后请使用新密码登录其他设备。</p>
+        <form id="passwordForm">
+          <label for="currentPassword">当前密码</label>
+          <input id="currentPassword" type="password" autocomplete="current-password" placeholder="输入当前密码" required />
+          <label for="nextPassword">新密码</label>
+          <input id="nextPassword" type="password" autocomplete="new-password" minlength="10" placeholder="至少 10 位字符" required />
+          <button class="primary" type="submit">更新密码</button>
+        </form>
+      </dialog>
+      <dialog id="removeDeviceDialog" class="account-dialog confirm-dialog" aria-labelledby="removeDeviceTitle">
+        <button id="cancelRemoveDeviceTop" class="dialog-close" type="button" aria-label="关闭">×</button>
+        <span class="eyebrow">移除设备</span>
+        <h3 id="removeDeviceTitle">确定断开这台设备？</h3>
+        <p id="removeDeviceHint">移除后，电脑端需要重新扫码配对才能远程访问。</p>
+        <div class="confirm-actions">
+          <button id="cancelRemoveDevice" class="secondary" type="button">取消</button>
+          <button id="confirmRemoveDevice" class="danger" type="button">确认移除</button>
+        </div>
+      </dialog>
+      <dialog id="qrScannerDialog" class="qr-scanner-dialog" aria-labelledby="qrScannerTitle">
+        <div class="scanner-sheet">
+          <div class="scanner-heading">
+            <div><span class="eyebrow">绑定设备</span><h3 id="qrScannerTitle">扫描电脑端二维码</h3></div>
+            <button id="closeQrScanner" class="dialog-close" type="button" aria-label="关闭扫码">×</button>
+          </div>
+          <div class="scanner-viewport">
+            <video id="qrScannerVideo" playsinline muted aria-label="二维码扫描取景器"></video>
+            <canvas id="qrScannerCanvas" class="hidden" aria-hidden="true"></canvas>
+            <div class="scanner-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span></span></div>
+          </div>
+          <p id="qrScannerStatus" class="scanner-status" role="status">请将电脑端显示的二维码放入框内</p>
+          <label class="photo-pairing" for="qrImagePicker">
+            <span aria-hidden="true">▧</span> 从相册选择二维码
+          </label>
+          <input id="qrImagePicker" class="sr-only" type="file" accept="image/*" />
+          <p class="scanner-privacy">二维码只在当前设备识别，图片与相机画面不会上传。</p>
+        </div>
+      </dialog>
+      <p id="message" role="status"></p>
+    </main>
+    <script src="qr-decoder.js?v=20260810-square-pairing"></script>
+    <script src="gateway.js?v=20260810-remote-wake"></script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+name: Feature request
+description: 提议新的非商业社区功能
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 请描述用户场景，不要粘贴其他项目的源码或界面实现。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的交互与验收标准
+    validations:
+      required: true
+  - type: checkboxes
+    id: provenance
+    attributes:
+      label: 来源确认
+      options:
+        - label: 我没有提交来源不明或来自类似项目的代码、素材、文案或选择器。
+          required: true

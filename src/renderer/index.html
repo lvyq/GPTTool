@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'" />
+  <title>GPTTool</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="window-controls.css" />
+  <link rel="stylesheet" href="compact-layout.css" />
+</head>
+<body>
+  <div id="windowBar" class="window-bar" aria-label="GPTTool 窗口标题栏">
+    <div class="window-caption"><span class="window-caption-mark"></span><span>GPTTool</span></div>
+    <div class="window-controls" role="group" aria-label="窗口控制">
+      <button id="windowMinimize" type="button" aria-label="最小化" title="最小化"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5h10" /></svg></button>
+      <button id="windowMaximize" type="button" aria-label="最大化" title="最大化"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg></button>
+      <button id="windowClose" class="window-close" type="button" aria-label="关闭到后台" title="关闭到后台"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
+    </div>
+  </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><img src="gpttool-logo.png" alt="" /><div><strong>GPTTool</strong><span>Remote Codex</span></div></div>
+      <nav>
+        <button class="nav-item active" data-page="home"><span>◎</span>远程控制</button>
+        <button class="nav-item" data-page="settings"><span>⚙</span>设置</button>
+      </nav>
+      <div class="sidebar-footer"><i id="statusDot"></i><span id="sideStatus">远程控制未启动</span></div>
+    </aside>
+
+    <main>
+      <header><div><p class="eyebrow">GPTTOOL DESKTOP</p><h1 id="pageTitle">远程控制</h1></div><span id="statusPill" class="status-pill">已停止</span></header>
+
+      <section class="page active" data-page-panel="home">
+        <div class="intro"><div><h2>连接方式</h2><p>启动后即可从手机或浏览器继续本机 Codex。</p></div></div>
+        <div class="mode-grid" role="radiogroup" aria-label="Codex 连接模式">
+          <button class="mode-card selected" data-mode="hybrid" role="radio" aria-checked="true">
+            <span class="mode-icon">◎</span><span class="mode-copy"><b>官方同步</b><small>CDP + app-server</small><em>Web 操作与官方客户端实时一致</em></span><span class="check">✓</span>
+          </button>
+          <button class="mode-card" data-mode="app-server" role="radio" aria-checked="false">
+            <span class="mode-icon">◇</span><span class="mode-copy"><b>独立服务</b><small>app-server</small><em>无界面操作，更耐官方 UI 更新</em></span><span class="check">✓</span>
+          </button>
+        </div>
+        <div id="modeNote" class="mode-note"><b>推荐</b><span>需要和官方 ChatGPT 客户端实时同步时使用。</span></div>
+        <button id="codexAction" class="primary-action">启动官方同步</button>
+        <div class="entry-heading"><div><b>远程入口</b><small>控制台与设备配对集中在这里</small></div><span id="entryState" class="entry-state">后台待机</span></div>
+        <div class="quick-row entry-grid">
+          <button id="openRemote" class="quick-card remote-console"><span class="quick-icon">↗</span><div class="quick-copy"><b>打开远程控制台</b><small id="remoteHint">手机扫码或在本机浏览器打开</small></div><span class="quick-arrow">›</span></button>
+          <button id="showPairingQr" class="quick-card"><span class="quick-icon">⊕</span><div class="quick-copy"><b id="pairingTitle">绑定当前电脑</b><small id="pairingHint">生成 10 分钟绑定二维码</small></div></button>
+          <button id="openPortal" class="quick-card"><span class="quick-icon">◇</span><div class="quick-copy"><b>设备中心</b><small>查看账户下已绑定设备</small></div></button>
+        </div>
+        <div class="binding-summary"><span id="bindingDot"></span><b id="bindingState">正在确认绑定状态</b></div>
+        <p id="statusMessage" class="status-message">请选择连接模式并启动远程控制</p>
+      </section>
+
+      <section class="page" data-page-panel="settings">
+        <div class="section-heading"><div><h2>基础设置</h2><p>只保留影响远程可用性的选项。</p></div></div>
+        <form id="settingsForm" class="panel settings-form">
+          <label>默认项目目录</label><div class="field-row"><input id="codexWorkingDirectory" placeholder="未设置时使用文稿目录" /><button type="button" id="pickDirectory">选择</button></div>
+          <label>设备名称</label><input id="relayDeviceName" maxlength="64" />
+          <div class="toggle-row"><div><b>自动检查更新</b><small>发现兼容更新时在客户端提示</small></div><input id="autoUpdate" type="checkbox" /></div>
+          <div class="toggle-row"><div><b>开机启动</b><small>登录系统后在后台运行 GPTTool</small></div><input id="launchAtLogin" type="checkbox" /></div>
+          <div class="toggle-row"><div><b>保持远程在线</b><small>允许屏幕熄灭，但阻止电脑睡眠，确保 Web 端仍可远程唤醒</small></div><input id="keepComputerAwake" type="checkbox" /></div>
+          <details class="advanced-settings"><summary>高级设置</summary><div><label>Codex 可执行文件</label><div class="field-row"><input id="codexExecutable" /><button type="button" id="pickCodex">选择</button></div></div></details>
+          <button class="save-button" type="submit">保存设置</button><p id="formMessage"></p>
+        </form>
+        <div class="update-row"><div><b id="updateTitle">GPTTool 已是最新版本</b><small id="updateDetail">自动更新已启用</small></div><button id="updateAction">检查更新</button><button id="openNotices">第三方声明</button></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="qrDialog"><button id="closeQr" aria-label="关闭">×</button><p id="qrKicker">手机访问</p><h2 id="qrTitle">扫描二维码</h2><img id="qrImage" alt="GPTTool 二维码" /><p id="qrUrl"></p><div id="qrActions" class="qr-actions"><button id="qrOpenLocal" type="button">在本机浏览器打开</button></div></dialog>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

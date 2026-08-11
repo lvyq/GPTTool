@@ -70,6 +70,8 @@ npm run dev
 
 公开源码默认使用 `example.com` 占位配置，**不会连接维护者的生产服务器**。请在 `.env` 或应用设置中填写自己的中继地址。
 
+仓库提供 [GitHub Actions CI 模板](.github/ci.example.yml)。维护者可在自己的仓库中将它复制到 `.github/workflows/ci.yml` 后启用自动检查。
+
 ### 构建桌面端
 
 ```bash

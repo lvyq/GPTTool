@@ -1,0 +1,51 @@
+node_modules/
+dist/
+release/
+coverage/
+.DS_Store
+runtime/
+*.log
+*.tmp
+
+# Local secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.mobileprovision
+*initial-admin*.txt
+
+# Local databases, state and uploads
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+uploads/
+
+# Generated Web UI and release artifacts
+main.js
+deploy/relay-server/public/
+deploy/relay-server/node_modules/
+deploy/relay-server/gateway/qr-decoder.js
+# The official marketing/download website is maintained privately.
+deploy/website/
+*.dmg
+*.exe
+*.msi
+*.blockmap
+*.zip
+
+# Production-only deployment records and server configuration
+deploy/relay-server/DEPLOYED.md
+deploy/relay-server/www.*.conf
+deploy/relay-server/astergate-relay.service
+deploy/relay-server/nginx-location.conf
+
+# Tooling caches
+.jscpd/
+*.tsbuildinfo
