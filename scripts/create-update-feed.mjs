@@ -15,8 +15,14 @@ const signingKeyPath = process.env.GPTTOOL_UPDATE_SIGNING_KEY
   || path.join(os.homedir(), '.config', 'gpttool-release', 'update-signing-ed25519.pem');
 const signingKey = await readFile(signingKeyPath, 'utf8');
 const sourceArtifacts = {
-  darwin: path.resolve(`release/GPTTool-${version}-universal.dmg`),
-  win32: path.resolve(`release/GPTTool-${version}-x64.exe`),
+  darwin: await existingArtifact([
+    `release/GPTTool-${version}-mac-universal.dmg`,
+    `release/GPTTool-${version}-universal.dmg`,
+  ]),
+  win32: await existingArtifact([
+    `release/GPTTool-${version}-windows-x64.exe`,
+    `release/GPTTool-${version}-x64.exe`,
+  ]),
 };
 const updateDirectory = path.resolve('deploy/website/updates');
 await mkdir(updateDirectory, { recursive: true });
@@ -61,4 +67,17 @@ function requiredUrl(value) {
   const url = new URL(value);
   if (url.protocol !== 'https:') throw new Error('更新地址必须使用 HTTPS');
   return url;
+}
+
+async function existingArtifact(candidates) {
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    try {
+      await stat(resolved);
+      return resolved;
+    } catch {
+      // Try the legacy artifact name for locally built releases.
+    }
+  }
+  throw new Error(`找不到发布产物：${candidates.join(' 或 ')}`);
 }

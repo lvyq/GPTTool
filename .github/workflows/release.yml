@@ -1,0 +1,215 @@
+name: Build and publish desktop release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: Rebuild and replace assets for the current version
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+  prepare:
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      should_release: ${{ steps.release.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_RELEASE: ${{ inputs.force_release || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          notes_version="$(node -p "require('./release-notes.json').version")"
+          test "$version" = "$notes_version" || {
+            echo "package.json 与 release-notes.json 版本不一致" >&2
+            exit 1
+          }
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "标签 ${GITHUB_REF_NAME} 与 package.json v${version} 不一致" >&2
+            exit 1
+          fi
+          status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/v${version}")"
+          if [[ "$FORCE_RELEASE" == "true" ]]; then
+            should_release=true
+          elif [[ "$status" == "404" ]]; then
+            should_release=true
+          elif [[ "$status" == "200" ]]; then
+            should_release=false
+          else
+            echo "检查 GitHub Release 失败，HTTP ${status}" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+
+  build-macos:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      GPTTOOL_RELAY_URL: ${{ secrets.PRODUCTION_RELAY_URL }}
+      GPTTOOL_UPDATE_MANIFEST_URL: ${{ secrets.UPDATE_MANIFEST_URL }}
+      GPTTOOL_UPDATE_PUBLIC_KEY: ${{ secrets.UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate production build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GPTTOOL_RELAY_URL"
+          test -n "$GPTTOOL_UPDATE_MANIFEST_URL"
+          test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
+      - run: npm ci
+      - run: npm run build
+      - name: Build Apple Silicon, Intel, and universal DMGs
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p release-final
+          npx electron-builder --mac dmg --arm64 --publish never --config.directories.output=release-arm64
+          cp "$(find release-arm64 -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-arm64.dmg"
+          npx electron-builder --mac dmg --x64 --publish never --config.directories.output=release-x64
+          cp "$(find release-x64 -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-x64.dmg"
+          npx electron-builder --mac dmg --universal --publish never --config.directories.output=release-universal
+          cp "$(find release-universal -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-universal.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installers
+          path: release-final/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      GPTTOOL_RELAY_URL: ${{ secrets.PRODUCTION_RELAY_URL }}
+      GPTTOOL_UPDATE_MANIFEST_URL: ${{ secrets.UPDATE_MANIFEST_URL }}
+      GPTTOOL_UPDATE_PUBLIC_KEY: ${{ secrets.UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate production build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GPTTOOL_RELAY_URL"
+          test -n "$GPTTOOL_UPDATE_MANIFEST_URL"
+          test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
+      - run: npm ci
+      - run: npm run build
+      - name: Build Windows x64 installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          npx electron-builder --win nsis --x64 --publish never --config.directories.output=release-windows
+          mkdir -p release-final
+          cp "$(find release-windows -maxdepth 1 -name '*.exe' -print -quit)" "release-final/GPTTool-${version}-windows-x64.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release-final/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build-macos, build-windows]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UPDATE_SIGNING_KEY_B64: ${{ secrets.UPDATE_SIGNING_KEY_B64 }}
+      UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-installer*'
+          path: release
+          merge-multiple: true
+      - name: Create checksums, signed update feed, and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$UPDATE_SIGNING_KEY_B64"
+          test -n "$UPDATE_BASE_URL"
+          printf '%s' "$UPDATE_SIGNING_KEY_B64" | base64 --decode > "$RUNNER_TEMP/update-signing.pem"
+          chmod 600 "$RUNNER_TEMP/update-signing.pem"
+          (
+            cd release
+            sha256sum GPTTool-* > SHA256SUMS
+          )
+          GPTTOOL_UPDATE_SIGNING_KEY="$RUNNER_TEMP/update-signing.pem" \
+          GPTTOOL_UPDATE_BASE_URL="$UPDATE_BASE_URL" \
+            npm run release:feed
+          cp deploy/website/updates/latest.json release/latest.json
+          node - <<'NODE' > release/release-notes.md
+          const notes = require('./release-notes.json');
+          console.log(`## GPTTool ${notes.version}\n`);
+          for (const note of notes.notes) console.log(`- ${note}`);
+          console.log('\n安装包的 SHA-256 校验值见 `SHA256SUMS`。');
+          NODE
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: GPTTool v${{ needs.prepare.outputs.version }}
+          body_path: release/release-notes.md
+          files: |
+            release/GPTTool-${{ needs.prepare.outputs.version }}-mac-arm64.dmg
+            release/GPTTool-${{ needs.prepare.outputs.version }}-mac-x64.dmg
+            release/GPTTool-${{ needs.prepare.outputs.version }}-mac-universal.dmg
+            release/GPTTool-${{ needs.prepare.outputs.version }}-windows-x64.exe
+            release/SHA256SUMS
+            release/latest.json
