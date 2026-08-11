@@ -29,3 +29,16 @@ test('prefers the main Codex page over auxiliary ChatGPT overlay targets', async
   assert.equal(target?.url, 'app://-/index.html');
   assert.equal(target?.webSocketDebuggerUrl, 'ws://127.0.0.1:39252/devtools/page/main');
 });
+
+test('recognizes newer Browser permission bottom sheets without a dialog role', async () => {
+  const source = await import('node:fs/promises').then(({ readFile }) => readFile(
+    new URL('../src/codex/cdp-client.ts', import.meta.url),
+    'utf8',
+  ));
+
+  assert.match(source, /button,\[role="button"\]/);
+  assert.match(source, /smallest visible common ancestor containing both one-time approval and/);
+  assert.match(source, /ancestor !== document\.body && depth < 10/);
+  assert.match(source, /isApprovalContainer\(ancestor\)/);
+  assert.doesNotMatch(source, /approveOnce = \/.*始终允许/);
+});

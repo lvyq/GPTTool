@@ -266,10 +266,30 @@ export class CdpClient extends EventEmitter {
       const label = (element) => String(element.textContent || element.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim();
       const approveOnce = /^(批准|允许|确认|继续|approve|allow|confirm|continue)$/i;
       const reject = /^(拒绝|取消|reject|deny|cancel)$/i;
-      const containers = [...document.querySelectorAll('[role="dialog"],[data-state="open"]')].filter(visible);
+      const controls = (container) => [...container.querySelectorAll('button,[role="button"]')]
+        .filter((control) => visible(control) && !control.matches(':disabled'));
+      const isApprovalContainer = (container) => {
+        const buttons = controls(container);
+        return buttons.some((button) => reject.test(label(button)))
+          && buttons.some((button) => approveOnce.test(label(button)));
+      };
+      const containers = [...document.querySelectorAll('[role="dialog"],[data-state="open"]')]
+        .filter((container) => visible(container) && isApprovalContainer(container));
+      // Newer ChatGPT builds render Browser/network permission prompts as a
+      // bottom sheet without role="dialog" or data-state="open". Resolve the
+      // smallest visible common ancestor containing both one-time approval and
+      // reject controls so unrelated page buttons are never clicked.
+      for (const candidate of [...document.querySelectorAll('button,[role="button"]')]
+        .filter((button) => visible(button) && approveOnce.test(label(button)))) {
+        let ancestor = candidate.parentElement;
+        for (let depth = 0; ancestor && ancestor !== document.body && depth < 10; depth += 1, ancestor = ancestor.parentElement) {
+          if (!visible(ancestor) || !isApprovalContainer(ancestor)) continue;
+          containers.push(ancestor);
+          break;
+        }
+      }
       for (const container of containers) {
-        const buttons = [...container.querySelectorAll('button')].filter((button) => visible(button) && !button.disabled);
-        if (!buttons.some((button) => reject.test(label(button)))) continue;
+        const buttons = controls(container);
         const button = buttons.find((candidate) => approveOnce.test(label(candidate)));
         if (!button) continue;
         const approvedLabel = label(button);
