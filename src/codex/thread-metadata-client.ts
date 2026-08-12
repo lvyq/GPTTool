@@ -65,6 +65,7 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
   #rpc?: LineRpcClient;
   #connecting?: Promise<void>;
   #closed = false;
+  #stderrTail = '';
   readonly #notificationListeners = new Set<(notification: RpcNotification) => void>();
   readonly #requestListeners = new Set<(request: RpcServerRequest) => void>();
 
@@ -79,11 +80,14 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
 
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
     await this.connect();
+    const rpc = this.#rpc!;
     try {
-      return await this.#rpc!.request<T>(method, params);
+      return await rpc.request<T>(method, params);
     } catch (error) {
       if (error instanceof RpcResponseError || this.#closed) throw error;
-      this.#reset();
+      // A second concurrent request may already have replaced this transport.
+      // Never let a late failure tear down that newer healthy connection.
+      this.#reset(undefined, rpc);
       await this.connect();
       return this.#rpc!.request<T>(method, params);
     }
@@ -137,6 +141,12 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
       windowsHide: true,
     });
     this.#child = child;
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      // Always drain stderr. Leaving this pipe unread eventually blocks the
+      // long-lived app-server and used to make reconnects race stale streams.
+      this.#stderrTail = `${this.#stderrTail}${chunk}`.slice(-8_000);
+    });
     const rpc = new LineRpcClient(child.stdin, child.stdout, 15_000);
     this.#rpc = rpc;
     rpc.on('notification', (notification: RpcNotification) => {
@@ -145,8 +155,9 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
     rpc.on('serverRequest', (request: RpcServerRequest) => {
       for (const listener of this.#requestListeners) listener(request);
     });
+    child.once('error', () => this.#reset(child));
     child.once('exit', () => this.#reset(child));
-    rpc.once('close', () => this.#reset(child));
+    rpc.once('close', () => this.#reset(child, rpc));
     try {
       await rpc.request('initialize', {
         clientInfo: {
@@ -156,19 +167,35 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
       });
       rpc.notify('initialized', {});
     } catch (error) {
+      const detail = this.#stderrTail.trim();
       this.#reset(child);
-      throw error;
+      throw detail && error instanceof Error ? new Error(`${error.message}: ${detail}`) : error;
     }
   }
 
-  #reset(expectedChild?: ChildProcessWithoutNullStreams): void {
+  #reset(expectedChild?: ChildProcessWithoutNullStreams, expectedRpc?: LineRpcClient): void {
     if (expectedChild && this.#child !== expectedChild) return;
+    if (expectedRpc && this.#rpc !== expectedRpc) return;
     const rpc = this.#rpc;
     const child = this.#child;
     this.#rpc = undefined;
     this.#child = undefined;
     rpc?.close();
-    if (child?.exitCode === null && !child.killed) child.kill();
+    if (child) {
+      // Detach every old stream before spawning a replacement. This prevents
+      // libuv callbacks belonging to a dead app-server from reaching the new
+      // connection after a sleep/wake or relay reconnect cycle.
+      child.stdout.pause();
+      child.stderr.pause();
+      if (child.exitCode === null && !child.killed) child.kill();
+      // Destroy the native pipe handles before a replacement is spawned. The
+      // remaining idempotent error listeners deliberately absorb late libuv
+      // errors from the old transport.
+      if (!child.stdin.destroyed) child.stdin.destroy();
+      if (!child.stdout.destroyed) child.stdout.destroy();
+      if (!child.stderr.destroyed) child.stderr.destroy();
+    }
+    this.#stderrTail = '';
   }
 }
 
@@ -203,6 +230,10 @@ export async function probeOfficialAppServerCompatibility(options: {
     windowsHide: true,
   });
   const rpc = new LineRpcClient(child.stdin, child.stdout, 12_000);
+  // The probe is short lived, but stderr still has to be consumed. A child
+  // that writes enough diagnostics can otherwise leave a native pipe pending
+  // while the next probe is already being created.
+  child.stderr.resume();
   const result: OfficialAppServerCompatibility = {
     initialized: false, threads: false, models: false, usage: false, directories: false,
   };
@@ -220,9 +251,7 @@ export async function probeOfficialAppServerCompatibility(options: {
     result.directories = await rpc.request('fs/readDirectory', { path: options.directory }).then(() => true, () => false);
     return result;
   } finally {
-    rpc.close();
-    child.stdin.end();
-    if (child.exitCode === null) child.kill();
+    disposeAppServerChild(child, rpc);
   }
 }
 
@@ -256,8 +285,19 @@ async function requestOfficialAppServer<T = unknown>(
     const detail = stderr.trim();
     throw new Error(detail ? `${error instanceof Error ? error.message : String(error)}: ${detail}` : String(error));
   } finally {
-    rpc.close();
-    child.stdin.end();
-    if (child.exitCode === null) child.kill();
+    disposeAppServerChild(child, rpc);
   }
+}
+
+function disposeAppServerChild(child: ChildProcessWithoutNullStreams, rpc: LineRpcClient): void {
+  rpc.close();
+  child.stdout.pause();
+  child.stderr.pause();
+  if (child.exitCode === null && !child.killed) child.kill();
+  // Destroy all native pipe handles synchronously. Calling stdin.end() and
+  // immediately spawning another app-server left libuv allocation callbacks
+  // alive after the owning Node stream had already been released.
+  if (!child.stdin.destroyed) child.stdin.destroy();
+  if (!child.stdout.destroyed) child.stdout.destroy();
+  if (!child.stderr.destroyed) child.stderr.destroy();
 }
