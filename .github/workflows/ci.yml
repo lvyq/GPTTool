@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,10 +19,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm ci --prefix deploy/relay-server
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Reject production secrets and artifacts
+      - name: Reject production secrets and generated artifacts
         shell: bash
         run: |
           set -euo pipefail

@@ -70,7 +70,9 @@ npm run dev
 
 公开源码默认使用 `example.com` 占位配置，**不会连接维护者的生产服务器**。请在 `.env` 或应用设置中填写自己的中继地址。
 
-仓库提供 [GitHub Actions CI 模板](.github/ci.example.yml)。维护者可在自己的仓库中将它复制到 `.github/workflows/ci.yml` 后启用自动检查。
+仓库已启用 GitHub Actions：普通提交和拉取请求会自动执行类型检查、测试与构建；版本号更新后会进入跨平台成品发布流程。
+
+维护者发布新版本时无需在本地分别构建 macOS 和 Windows 安装包。仓库内置的 GitHub Actions 会在版本号更新后自动构建跨平台安装包、生成 SHA-256、签名更新清单并创建 GitHub Release。生产配置只通过 Actions Secrets 注入，详见[自动构建与发布](docs/RELEASING.zh-CN.md)。
 
 ### 构建桌面端
 
