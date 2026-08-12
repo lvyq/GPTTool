@@ -112,6 +112,15 @@ test('renders remaining usage as a compact green and white ring without a percen
   assert.match(stylesheet, /\.usage-ring > span/);
 });
 
+test('formats ISO quota reset timestamps in the browser local timezone', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+
+  assert.match(source, /function formatUsageResetTime\(value\)/);
+  assert.match(source, /new Intl\.DateTimeFormat\('zh-CN', options\)/);
+  assert.match(source, /const resetLabel = formatUsageResetTime\(result\.resetAt\)/);
+  assert.doesNotMatch(source, /`\$\{result\.resetAt\}重置 · 来自官方客户端`/);
+});
+
 test('renders task activity as a thin flowing strip below the navigation bar', async () => {
   const [markup, stylesheet] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
