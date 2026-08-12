@@ -57,3 +57,36 @@ test('turns RPC error payloads into typed errors', async () => {
   });
   client.close();
 });
+
+test('closes and detaches stream listeners when an RPC frame exceeds its limit', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const client = new LineRpcClient(input, output, 500, 64);
+  const protocolError = once(client, 'protocolError');
+  const closed = once(client, 'close');
+
+  output.write('x'.repeat(65));
+
+  const [error] = await protocolError;
+  assert.match((error as Error).message, /safety limit/);
+  await closed;
+  assert.equal(output.listenerCount('data'), 0);
+  assert.equal(output.listenerCount('end'), 0);
+  assert.equal(output.listenerCount('close'), 0);
+  assert.equal(output.listenerCount('error'), 1);
+  assert.equal(input.listenerCount('error'), 1);
+  await assert.rejects(client.request('health/read'), /closed/);
+});
+
+test('ignores late data from a detached RPC stream', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const client = new LineRpcClient(input, output, 500);
+  let notifications = 0;
+  client.on('notification', () => { notifications += 1; });
+
+  client.close();
+  output.emit('data', '{"method":"turn/completed"}\n');
+
+  assert.equal(notifications, 0);
+});

@@ -36,18 +36,34 @@ export class LineRpcClient extends EventEmitter {
   #buffer = '';
   #closed = false;
   #pending = new Map<RpcId, PendingRequest>();
+  readonly #input: Writable;
+  readonly #output: Readable;
+  readonly #maxBufferedChars: number;
+  readonly #onData: (chunk: string) => void;
+  readonly #onEnd: () => void;
+  readonly #onOutputError: (error: Error) => void;
+  readonly #onInputError: (error: Error) => void;
 
   constructor(
-    private readonly input: Writable,
+    input: Writable,
     output: Readable,
     private readonly timeoutMs = 30_000,
+    maxBufferedChars = 16 * 1024 * 1024,
   ) {
     super();
+    this.#input = input;
+    this.#output = output;
+    this.#maxBufferedChars = maxBufferedChars;
+    this.#onData = (chunk: string) => this.#consume(chunk);
+    this.#onEnd = () => this.close(new Error('RPC output ended'));
+    this.#onOutputError = (error) => this.close(error);
+    this.#onInputError = (error) => this.close(error);
     output.setEncoding('utf8');
-    output.on('data', (chunk: string) => this.#consume(chunk));
-    output.on('end', () => this.close(new Error('RPC output ended')));
-    output.on('error', (error) => this.close(error));
-    input.on('error', (error) => this.close(error));
+    output.on('data', this.#onData);
+    output.on('end', this.#onEnd);
+    output.on('close', this.#onEnd);
+    output.on('error', this.#onOutputError);
+    input.on('error', this.#onInputError);
   }
 
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -62,7 +78,7 @@ export class LineRpcClient extends EventEmitter {
       }, this.timeoutMs);
 
       this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-      this.input.write(`${JSON.stringify(payload)}\n`, (error) => {
+      this.#input.write(`${JSON.stringify(payload)}\n`, (error) => {
         if (!error) return;
         const pending = this.#pending.get(id);
         if (!pending) return;
@@ -76,17 +92,25 @@ export class LineRpcClient extends EventEmitter {
   notify(method: string, params?: unknown): void {
     if (this.#closed) throw new Error('RPC client is closed');
     const payload = params === undefined ? { method } : { method, params };
-    this.input.write(`${JSON.stringify(payload)}\n`);
+    this.#input.write(`${JSON.stringify(payload)}\n`);
   }
 
   respond(id: RpcId, result: unknown): void {
     if (this.#closed) throw new Error('RPC client is closed');
-    this.input.write(`${JSON.stringify({ id, result })}\n`);
+    this.#input.write(`${JSON.stringify({ id, result })}\n`);
   }
 
   close(reason = new Error('RPC client closed')): void {
     if (this.#closed) return;
     this.#closed = true;
+    this.#output.off('data', this.#onData);
+    this.#output.off('end', this.#onEnd);
+    this.#output.off('close', this.#onEnd);
+    // Keep the idempotent error handlers until the underlying stream itself
+    // closes. A late libuv error with no listener would otherwise become an
+    // uncaught exception while an app-server transport is being replaced.
+    this.#output.pause();
+    this.#buffer = '';
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(reason);
@@ -96,6 +120,13 @@ export class LineRpcClient extends EventEmitter {
   }
 
   #consume(chunk: string): void {
+    if (this.#closed) return;
+    if (chunk.length > this.#maxBufferedChars || this.#buffer.length + chunk.length > this.#maxBufferedChars) {
+      const error = new Error(`RPC frame exceeded ${this.#maxBufferedChars} character safety limit`);
+      this.emit('protocolError', error);
+      this.close(error);
+      return;
+    }
     this.#buffer += chunk;
     for (;;) {
       const newline = this.#buffer.indexOf('\n');
@@ -107,6 +138,7 @@ export class LineRpcClient extends EventEmitter {
   }
 
   #handleLine(line: string): void {
+    if (this.#closed) return;
     let message: Record<string, unknown>;
     try {
       message = JSON.parse(line) as Record<string, unknown>;

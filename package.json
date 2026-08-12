@@ -1,6 +1,6 @@
 {
   "name": "gpttool-desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Cross-platform remote workspace for Codex",
   "author": "lvyq and GPTTool contributors",
   "private": true,
@@ -48,7 +48,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/sql.js": "^1.4.11",
     "@types/ws": "^8.18.0",
-    "electron": "^43.1.1",
+    "electron": "43.4.0",
     "electron-builder": "26.0.12",
     "esbuild": "^0.25.0",
     "jsqr": "^1.4.0",
@@ -85,12 +85,8 @@
         "to": "NOTICE.txt"
       },
       {
-        "from": "node_modules/electron/dist/LICENSE",
+        "from": "node_modules/electron/LICENSE",
         "to": "LICENSE.electron.txt"
-      },
-      {
-        "from": "node_modules/electron/dist/LICENSES.chromium.html",
-        "to": "LICENSES.chromium.html"
       }
     ],
     "mac": {
