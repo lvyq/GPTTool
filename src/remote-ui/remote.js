@@ -689,12 +689,13 @@
     ui.showUsage.classList.toggle('exhausted', exhausted);
     ui.showUsage.title = exhausted ? 'Codex 剩余额度已用完' : `${result.period || '当前周期'}剩余 ${percentage}%`;
     ui.usageDetail.textContent = exhausted ? 'Codex 剩余额度已用完' : `${result.period || '当前周期'}剩余 ${percentage}%`;
-    ui.usageReset.textContent = result.resetAt
-      ? `${result.resetAt}重置 · 来自官方客户端`
+    const resetLabel = formatUsageResetTime(result.resetAt);
+    ui.usageReset.textContent = resetLabel
+      ? `${resetLabel}重置 · 来自官方客户端`
       : exhausted ? '官方客户端已暂停执行新任务' : '数据来自本机官方客户端';
     usageExhausted = exhausted;
     usageBlockMessage = exhausted
-      ? `Codex 剩余额度已用完${result.resetAt ? `，预计 ${result.resetAt} 重置` : ''}。官方客户端已阻止执行，新消息暂时不能发送。`
+      ? `Codex 剩余额度已用完${resetLabel ? `，预计 ${resetLabel}重置` : ''}。官方客户端已阻止执行，新消息暂时不能发送。`
       : '';
     refreshComposerAvailability();
     if (exhausted) {
@@ -704,6 +705,25 @@
       clearComposerError();
     }
     renderQueue();
+  }
+
+  function formatUsageResetTime(value) {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) return '';
+    const timestamp = Date.parse(text);
+    if (!Number.isFinite(timestamp)) return text.replace(/\s*重置\s*$/, '').trim();
+    const reset = new Date(timestamp);
+    const now = new Date();
+    const sameYear = reset.getFullYear() === now.getFullYear();
+    const options = {
+      ...(sameYear ? {} : { year: 'numeric' }),
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    };
+    return new Intl.DateTimeFormat('zh-CN', options).format(reset);
   }
 
   function configureDiscreteSlider(select, slider, valueLabel, ticks, items, selected) {
