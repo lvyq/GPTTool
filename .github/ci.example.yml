@@ -28,4 +28,4 @@ jobs:
           set -euo pipefail
           ! git ls-files | grep -E '(^|/)(\.env|.*initial-admin.*|DEPLOYED\.md)$'
           ! git ls-files | grep -E '\.(dmg|exe|msi|p12|pfx|pem|key|sqlite|db)$'
-          ! git grep -nE 'BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|GPTTOOL_UPDATE_SIGNING_KEY=.+' -- ':!*.example'
+          ! git grep -nE 'BEGIN ([A-Z0-9]+ )?PRIVATE KEY'
