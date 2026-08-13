@@ -112,7 +112,7 @@ test('supports self-service registration, automatic login, validation and accoun
   await waitForOnlineDevices(relayPort, 0);
 
   const sessionBefore = await fetch(`http://127.0.0.1:${relayPort}/api/session`);
-  assert.deepEqual(await sessionBefore.json(), { authenticated: false, registrationOpen: true });
+  assert.deepEqual(await sessionBefore.json(), { authenticated: false, registrationOpen: true, announcement: '' });
 
   const mismatch = await register(relayPort, 'new-owner', 'registration-password-2026', 'different-password-2026');
   assert.equal(mismatch.status, 400);
@@ -128,6 +128,7 @@ test('supports self-service registration, automatic login, validation and accoun
   assert.deepEqual(await authenticated.json(), {
     authenticated: true,
     registrationOpen: true,
+    announcement: '',
     user: registeredUser,
   });
 

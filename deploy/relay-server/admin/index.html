@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070907">
+  <title>GPTTool 管理后台</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="brand-dot"></span><b>GPTTool</b><small>系统管理</small></div>
+    <nav><button data-page="overview" class="active">概览</button><button data-page="users">用户</button><button data-page="rules">CDP 规则</button><button data-page="config">系统配置</button></nav>
+    <a href="../">返回设备中心</a>
+  </header>
+  <main>
+    <section class="page active" id="page-overview">
+      <div class="heading"><div><p>OPERATIONS</p><h1>运行概览</h1><span>当前用户、在线连接与规则覆盖情况。</span></div><button class="outline" id="refreshOverview">刷新</button></div>
+      <div class="metrics" id="metrics"></div>
+      <article class="panel"><div class="panel-head"><div><h2>24 小时在线趋势</h2><p>每五分钟采样，不记录用户消息内容。</p></div></div><div class="chart" id="chart"></div></article>
+    </section>
+    <section class="page" id="page-users">
+      <div class="heading"><div><p>ACCOUNTS</p><h1>用户管理</h1><span>查看账号、设备与在线状态，控制账号可用性。</span></div><input id="userSearch" type="search" placeholder="搜索账号"></div>
+      <article class="panel table-panel"><div class="table" id="usersTable"></div></article>
+    </section>
+    <section class="page" id="page-rules">
+      <div class="heading"><div><p>COMPATIBILITY</p><h1>CDP 规则</h1><span>按官方 ChatGPT 版本下发操作规则，客户端无需更新。</span></div><button id="newRule">上传规则</button></div>
+      <article class="panel table-panel"><div class="table" id="rulesTable"></div></article>
+      <dialog id="ruleDialog"><form method="dialog"><div class="dialog-head"><div><small>CDP RULE</small><h2>上传兼容规则</h2></div><button value="cancel" class="icon">×</button></div><label>规则 JSON<textarea id="ruleJson" spellcheck="false" placeholder='{"schemaVersion":1,"id":"...","selectors":{}}'></textarea></label><div class="row"><label>平台<select id="rulePlatform"><option value="all">全部</option><option value="darwin">macOS</option><option value="win32">Windows</option></select></label><label>优先级<input id="rulePriority" type="number" value="0"></label></div><p class="form-error" id="ruleError"></p><button type="button" id="saveRule">保存并立即下发</button></form></dialog>
+    </section>
+    <section class="page" id="page-config">
+      <div class="heading"><div><p>DATABASE CONFIG</p><h1>系统配置</h1><span>配置保存在 PostgreSQL，保存后无需重启服务。</span></div><button id="saveConfig">保存修改</button></div>
+      <article class="panel config-grid" id="configForm"></article>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="admin.js" defer></script>
+</body>
+</html>
