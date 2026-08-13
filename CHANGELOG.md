@@ -4,6 +4,19 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-13
+
+### Added
+
+- PostgreSQL-backed administrator dashboard for live usage, accounts, CDP compatibility rules and runtime configuration.
+- Protected system administrator role and account/device status controls.
+- Search-engine and LLM crawler metadata for the separately deployed official website.
+
+### Changed
+
+- Registration, pairing lifetime, login lifetime and device limits can be changed without restarting the relay.
+- Installer delivery now supports byte ranges, long-lived immutable assets and optimized Nginx file serving.
+
 ### Added
 
 - Public self-hosting documentation and deployment templates.

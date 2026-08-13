@@ -73,6 +73,8 @@
     const session = await api('api/session');
     $('showRegister').classList.toggle('hidden', session.registrationOpen === false);
     $('loginToRegister').classList.toggle('hidden', session.registrationOpen === false);
+    $('systemAnnouncement').textContent = session.announcement || '';
+    $('systemAnnouncement').classList.toggle('hidden', !session.announcement);
     if (session.registrationOpen === false && !$('registerForm').classList.contains('hidden')) setAuthMode('login');
     loginView.classList.toggle('hidden', session.authenticated);
     devicesView.classList.toggle('hidden', !session.authenticated);

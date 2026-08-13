@@ -161,6 +161,15 @@ h1, h2, h3, p { margin: 0; }
   background: linear-gradient(150deg, rgba(16, 41, 73, .92), rgba(7, 22, 42, .94));
   box-shadow: var(--shadow);
 }
+.system-announcement {
+  margin: 0 0 24px;
+  padding: 13px 16px;
+  border: 1px solid rgba(61, 221, 151, .3);
+  border-radius: 14px;
+  background: rgba(61, 221, 151, .08);
+  color: #dffbed;
+  line-height: 1.6;
+}
 .login-card {
   position: relative;
   overflow: hidden;

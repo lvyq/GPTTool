@@ -8,6 +8,7 @@ import { createStorage } from './storage.mjs';
 const port = integerEnv('ASTERGATE_RELAY_PORT', 8790);
 const assetsDirectory = requiredEnv('ASTERGATE_ASSETS_DIR');
 const gatewayDirectory = process.env.ASTERGATE_GATEWAY_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), 'gateway');
+const adminDirectory = process.env.ASTERGATE_ADMIN_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), 'admin');
 const publicUrl = new URL(requiredEnv('ASTERGATE_PUBLIC_URL'));
 const allowedOrigin = publicUrl.origin;
 const { store, sessions, backend: storageBackend } = await createStorage();
@@ -18,7 +19,7 @@ const loginAttempts = new Map();
 const registrationAttempts = new Map();
 const pairingAttempts = new Map();
 const claimAttempts = new Map();
-const registrationOpen = (process.env.ASTERGATE_REGISTRATION_MODE || 'open').trim().toLowerCase() !== 'closed';
+const registrationOpenFallback = (process.env.ASTERGATE_REGISTRATION_MODE || 'open').trim().toLowerCase() !== 'closed';
 const cdpRuleAdminToken = String(process.env.GPTTOOL_CDP_RULE_ADMIN_TOKEN || '').trim();
 const MAX_RELAY_MESSAGE_BYTES = 16 * 1024 * 1024;
 const MAX_RELAY_CHUNKS = 256;
@@ -39,6 +40,12 @@ const remoteFiles = new Map([
   ['web-version.json', ['web-version.json', 'application/json; charset=utf-8']],
   ['gpttool-logo.png', ['gpttool-logo.png', 'image/png']],
   ['apple-touch-icon.png', ['apple-touch-icon.png', 'image/png']],
+]);
+const adminFiles = new Map([
+  ['', ['index.html', 'text/html; charset=utf-8']],
+  ['/', ['index.html', 'text/html; charset=utf-8']],
+  ['/admin.js', ['admin.js', 'text/javascript; charset=utf-8']],
+  ['/admin.css', ['admin.css', 'text/css; charset=utf-8']],
 ]);
 
 const server = createServer((request, response) => void handleHttp(request, response));
@@ -131,6 +138,10 @@ const heartbeat = setInterval(() => {
 }, 25_000);
 heartbeat.unref();
 
+const metricSampler = setInterval(() => void sampleMetrics(), 5 * 60_000);
+metricSampler.unref();
+setTimeout(() => void sampleMetrics(), 15_000).unref();
+
 server.listen(port, '127.0.0.1', () => console.log(`GPTTool multi-tenant relay listening on 127.0.0.1:${port} (${storageBackend})`));
 
 async function handleHttp(request, response) {
@@ -143,6 +154,17 @@ async function handleHttp(request, response) {
     activeBrowsers: browsers.size,
   });
   if (requestUrl.pathname.startsWith('/api/')) return handleApi(request, response, requestUrl);
+
+  if (requestUrl.pathname === '/admin') return redirect(response, `${publicUrl.pathname.replace(/\/$/, '')}/admin/`);
+  if (requestUrl.pathname.startsWith('/admin/')) {
+    const session = await authenticatedSession(request);
+    const user = session && await store.userById(session.userId);
+    if (!user) return redirect(response, publicUrl.pathname);
+    if (user.role !== 'admin') return textResponse(response, 403, 'Administrator access required');
+    const entry = adminFiles.get(requestUrl.pathname.slice('/admin'.length));
+    if (!entry) return textResponse(response, 404, 'Not found');
+    return streamFile(response, path.join(adminDirectory, entry[0]), entry[1]);
+  }
 
   const deviceMatch = requestUrl.pathname.match(/^\/device\/([^/]+)\/(.*)$/);
   if (deviceMatch) {
@@ -167,24 +189,26 @@ async function handleApi(request, response, requestUrl) {
     return rules ? json(response, 200, rules) : json(response, 404, { error: '当前官方客户端版本暂无专用规则，将使用客户端内置兼容规则' });
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/admin/cdp-rules') {
-    if (!cdpRuleAdminToken || request.headers.authorization !== `Bearer ${cdpRuleAdminToken}`) return json(response, 404, { error: 'Not found' });
-    const body = await readJson(request, response); if (!body) return;
-    const rules = body.rules || body;
-    if (!rules || rules.schemaVersion !== 1 || typeof rules.id !== 'string' || !rules.selectors) return json(response, 400, { error: 'CDP 规则格式无效' });
-    if (typeof store.putCdpRules !== 'function') return json(response, 503, { error: '当前存储后端不支持云端 CDP 规则' });
-    await store.putCdpRules(rules, body.platform || 'all', body.priority || 0);
-    return json(response, 201, { ok: true, id: rules.id });
+    if (cdpRuleAdminToken && request.headers.authorization === `Bearer ${cdpRuleAdminToken}`) {
+      const body = await readJson(request, response); if (!body) return;
+      return putCdpRule(response, body);
+    }
   }
   if (request.method === 'GET' && requestUrl.pathname === '/api/session') {
     const session = await authenticatedSession(request);
+    const registrationOpen = await configValue('registrationOpen', registrationOpenFallback);
+    const announcement = await configValue('systemAnnouncement', '');
     return json(response, 200, session
-      ? { authenticated: true, user: await store.userById(session.userId), registrationOpen }
-      : { authenticated: false, registrationOpen });
+      ? { authenticated: true, user: await store.userById(session.userId), registrationOpen, announcement }
+      : { authenticated: false, registrationOpen, announcement });
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/pair/start') {
     if (!consumeRateLimit(pairingAttempts, clientAddress(request), 20, 60 * 60_000)) return json(response, 429, { error: '配对请求过于频繁' });
     const body = await readJson(request, response); if (!body) return;
-    try { return json(response, 200, await store.createPairing({ deviceId: body.deviceId, name: body.name, secret: body.secret })); }
+    try {
+      const ttlMinutes = await configValue('pairingTtlMinutes', 10);
+      return json(response, 200, await store.createPairing({ deviceId: body.deviceId, name: body.name, secret: body.secret, ttlMinutes }));
+    }
     catch (error) { return json(response, 400, { error: error.message }); }
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/login') {
@@ -200,6 +224,7 @@ async function handleApi(request, response, requestUrl) {
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/register') {
     if (!validOrigin(request)) return json(response, 403, { error: '请求来源无效' });
+    const registrationOpen = await configValue('registrationOpen', registrationOpenFallback);
     if (!registrationOpen) return json(response, 403, { error: '暂未开放新账号注册' });
     const address = clientAddress(request);
     if (!consumeRateLimit(registrationAttempts, address, 5, 60 * 60_000)) return json(response, 429, { error: '注册操作过于频繁，请稍后再试' });
@@ -218,6 +243,13 @@ async function handleApi(request, response, requestUrl) {
   const session = await authenticatedSession(request);
   if (!session) return json(response, 401, { error: '请先登录' });
   if (request.method !== 'GET' && !validOrigin(request)) return json(response, 403, { error: '请求来源无效' });
+
+  const currentUser = await store.userById(session.userId);
+  if (!currentUser || currentUser.disabled) return json(response, 403, { error: '账号已被停用' });
+  if (requestUrl.pathname.startsWith('/api/admin/')) {
+    if (currentUser.role !== 'admin') return json(response, 403, { error: '需要系统管理员权限' });
+    return handleAdminApi(request, response, requestUrl, currentUser);
+  }
 
   if (request.method === 'POST' && requestUrl.pathname === '/api/logout') {
     const token = cookieValue(request, 'astergate_sid'); if (token) await sessions.delete(hashToken(token));
@@ -243,7 +275,8 @@ async function handleApi(request, response, requestUrl) {
   if (request.method === 'POST' && requestUrl.pathname === '/api/pair/claim') {
     if (!consumeRateLimit(claimAttempts, `${session.userId}:${clientAddress(request)}`, 20, 15 * 60_000)) return json(response, 429, { error: '配对二维码尝试次数过多，请稍后再试' });
     const body = await readJson(request, response); if (!body) return;
-    try { return json(response, 200, { device: await store.claimPairing(session.userId, body.code) }); }
+    const maxDevices = Number(await configValue('maxDevicesPerUser', 10)) || 10;
+    try { return json(response, 200, { device: await store.claimPairing(session.userId, body.code, maxDevices) }); }
     catch (error) { return json(response, 400, { error: error.message }); }
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/password') {
@@ -261,6 +294,81 @@ async function handleApi(request, response, requestUrl) {
     } catch (error) { return json(response, 404, { error: error.message }); }
   }
   return json(response, 404, { error: 'Not found' });
+}
+
+async function handleAdminApi(request, response, requestUrl, currentUser) {
+  if (request.method === 'GET' && requestUrl.pathname === '/api/admin/overview') {
+    const overview = await store.adminOverview?.([...agents.keys()], [...browsers.values()].map((entry) => entry.deviceId));
+    if (!overview) return json(response, 503, { error: '管理员统计需要 PostgreSQL 存储' });
+    overview.service = { uptimeSeconds: Math.round(process.uptime()), storage: storageBackend };
+    return json(response, 200, overview);
+  }
+  if (request.method === 'GET' && requestUrl.pathname === '/api/admin/metrics') {
+    return json(response, 200, { metrics: await store.recentMetrics?.(requestUrl.searchParams.get('hours') || 24) || [] });
+  }
+  if (request.method === 'GET' && requestUrl.pathname === '/api/admin/users') {
+    const users = await store.listAdminUsers?.({
+      query: requestUrl.searchParams.get('q') || '', limit: requestUrl.searchParams.get('limit') || 50,
+      offset: requestUrl.searchParams.get('offset') || 0,
+    }, [...agents.keys()]);
+    return json(response, 200, { users: users || [] });
+  }
+  const userMatch = requestUrl.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+  if (request.method === 'PATCH' && userMatch) {
+    const body = await readJson(request, response); if (!body) return;
+    try { return json(response, 200, { user: await store.updateAdminUser(decodeURIComponent(userMatch[1]), body, currentUser.id) }); }
+    catch (error) { return json(response, 400, { error: error.message }); }
+  }
+  if (request.method === 'GET' && requestUrl.pathname === '/api/admin/cdp-rules') {
+    return json(response, 200, { rules: await store.listCdpRules?.() || [] });
+  }
+  if (request.method === 'POST' && requestUrl.pathname === '/api/admin/cdp-rules') {
+    const body = await readJson(request, response); if (!body) return;
+    return putCdpRule(response, body);
+  }
+  const ruleMatch = requestUrl.pathname.match(/^\/api\/admin\/cdp-rules\/([^/]+)$/);
+  if (request.method === 'PATCH' && ruleMatch) {
+    const body = await readJson(request, response); if (!body) return;
+    try { await store.updateCdpRule(decodeURIComponent(ruleMatch[1]), body, currentUser.id); return json(response, 200, { ok: true }); }
+    catch (error) { return json(response, 400, { error: error.message }); }
+  }
+  if (request.method === 'DELETE' && ruleMatch) {
+    try { await store.deleteCdpRule(decodeURIComponent(ruleMatch[1]), currentUser.id); return json(response, 200, { ok: true }); }
+    catch (error) { return json(response, 400, { error: error.message }); }
+  }
+  if (request.method === 'GET' && requestUrl.pathname === '/api/admin/config') {
+    return json(response, 200, { config: await store.getSystemConfig?.() || {} });
+  }
+  if (request.method === 'PUT' && requestUrl.pathname === '/api/admin/config') {
+    const body = await readJson(request, response); if (!body) return;
+    const updated = {};
+    try {
+      for (const [key, value] of Object.entries(body)) updated[key] = await store.putSystemConfig(key, value, currentUser.id);
+      return json(response, 200, { ok: true, updated });
+    } catch (error) { return json(response, 400, { error: error.message }); }
+  }
+  return json(response, 404, { error: 'Not found' });
+}
+
+async function putCdpRule(response, body) {
+  const rules = body.rules || body;
+  if (!rules || rules.schemaVersion !== 1 || typeof rules.id !== 'string' || !rules.selectors) return json(response, 400, { error: 'CDP 规则格式无效' });
+  if (typeof store.putCdpRules !== 'function') return json(response, 503, { error: '当前存储后端不支持云端 CDP 规则' });
+  await store.putCdpRules(rules, body.platform || 'all', body.priority || 0);
+  return json(response, 201, { ok: true, id: rules.id });
+}
+
+async function configValue(key, fallback) {
+  try { return typeof store.configValue === 'function' ? await store.configValue(key, fallback) : fallback; }
+  catch { return fallback; }
+}
+
+async function sampleMetrics() {
+  if (typeof store.adminOverview !== 'function' || typeof store.recordMetrics !== 'function') return;
+  try {
+    const overview = await store.adminOverview([...agents.keys()], [...browsers.values()].map((entry) => entry.deviceId));
+    await store.recordMetrics(overview);
+  } catch (error) { console.warn(`Failed to sample metrics: ${error.message}`); }
 }
 
 async function handleAgentMessage(deviceId, raw) {
@@ -355,8 +463,10 @@ function clientAddress(request) { return String(request.headers['x-real-ip'] || 
 function consumeRateLimit(map, key, limit, windowMs) { const now = Date.now(); const values = (map.get(key) || []).filter((time) => time > now - windowMs); values.push(now); map.set(key, values); return values.length <= limit; }
 async function issueSession(response, user, status = 200) {
   const token = randomBytes(32).toString('base64url');
-  await sessions.set(hashToken(token), { userId: user.id, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 });
-  response.setHeader('Set-Cookie', `astergate_sid=${token}; HttpOnly; Secure; SameSite=Strict; Path=${publicUrl.pathname}; Max-Age=604800`);
+  const ttlDays = Number(await configValue('sessionTtlDays', 7)) || 7;
+  const maxAge = Math.round(ttlDays * 24 * 60 * 60);
+  await sessions.set(hashToken(token), { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
+  response.setHeader('Set-Cookie', `astergate_sid=${token}; HttpOnly; Secure; SameSite=Strict; Path=${publicUrl.pathname}; Max-Age=${maxAge}`);
   return json(response, status, { user });
 }
 function send(socket, value) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value)); }
