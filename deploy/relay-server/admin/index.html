@@ -8,6 +8,18 @@
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
+  <section class="admin-login" id="adminLogin">
+    <form id="adminLoginForm">
+      <div class="login-brand"><span class="brand-dot"></span><b>GPTTool</b><small>系统管理</small></div>
+      <p>ADMIN CONSOLE</p><h1>管理员登录</h1><span>使用系统管理员账号进入运行后台。</span>
+      <label>账号<input id="adminUsername" autocomplete="username" value="admin" required></label>
+      <label>密码<input id="adminPassword" type="password" autocomplete="current-password" required></label>
+      <div class="form-error" id="adminLoginError"></div>
+      <button type="submit">登录管理后台</button>
+      <a href="../">返回设备中心</a>
+    </form>
+  </section>
+  <div id="adminApp" class="hidden">
   <header class="topbar">
     <div><span class="brand-dot"></span><b>GPTTool</b><small>系统管理</small></div>
     <nav><button data-page="overview" class="active">概览</button><button data-page="users">用户</button><button data-page="rules">CDP 规则</button><button data-page="config">系统配置</button></nav>
@@ -34,6 +46,7 @@
     </section>
   </main>
   <div class="toast" id="toast" role="status"></div>
+  </div>
   <script src="admin.js" defer></script>
 </body>
 </html>

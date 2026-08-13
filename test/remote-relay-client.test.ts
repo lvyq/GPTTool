@@ -42,6 +42,12 @@ test('isolates a public browser by account and relays it to the selected device'
   });
   await waitForOnlineDevices(relayPort, 0);
 
+  const adminShell = await fetch(`http://127.0.0.1:${relayPort}/admin/`, { redirect: 'manual' });
+  assert.equal(adminShell.status, 200);
+  assert.match(await adminShell.text(), /管理员登录/);
+  const protectedAdminApi = await fetch(`http://127.0.0.1:${relayPort}/api/admin/overview`);
+  assert.equal(protectedAdminApi.status, 401);
+
   let publicUrl = '';
   let remoteStarts = 0;
   client = new RemoteRelayClient({

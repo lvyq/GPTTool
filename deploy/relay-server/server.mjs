@@ -157,10 +157,9 @@ async function handleHttp(request, response) {
 
   if (requestUrl.pathname === '/admin') return redirect(response, `${publicUrl.pathname.replace(/\/$/, '')}/admin/`);
   if (requestUrl.pathname.startsWith('/admin/')) {
-    const session = await authenticatedSession(request);
-    const user = session && await store.userById(session.userId);
-    if (!user) return redirect(response, publicUrl.pathname);
-    if (user.role !== 'admin') return textResponse(response, 403, 'Administrator access required');
+    // The administration shell is public so an administrator can open this
+    // URL directly and sign in here. All data and mutations remain protected
+    // by the role checks in /api/admin/*.
     const entry = adminFiles.get(requestUrl.pathname.slice('/admin'.length));
     if (!entry) return textResponse(response, 404, 'Not found');
     return streamFile(response, path.join(adminDirectory, entry[0]), entry[1]);
