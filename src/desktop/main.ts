@@ -333,6 +333,7 @@ async function startCodex(options: { remote?: boolean } = {}): Promise<DesktopSt
       sessionCacheDirectory: path.join(app.getPath('userData'), 'task-history-cache'),
       officialAppVersion: officialClient.appVersion,
       connectionMode: config.codexConnectionMode,
+      cdpRulesEndpoint: cdpRulesEndpoint(config.relayUrl),
     });
     await service.startCodex();
     // Passive background handshake only: do not navigate, open a task, click
@@ -387,6 +388,19 @@ async function startCodex(options: { remote?: boolean } = {}): Promise<DesktopSt
     throw error;
   }
   return status;
+}
+
+function cdpRulesEndpoint(relayUrl: string): string | undefined {
+  try {
+    const url = new URL(relayUrl);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.at(-1) === 'agent') segments.pop();
+    url.pathname = `/${[...segments, 'api', 'cdp-rules'].join('/')}`;
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch { return undefined; }
 }
 
 async function stopCodex(): Promise<DesktopStatus> {

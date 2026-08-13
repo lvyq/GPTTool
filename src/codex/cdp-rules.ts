@@ -1,0 +1,111 @@
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+
+export interface CdpOperationRules {
+  schemaVersion: 1;
+  id: string;
+  minOfficialVersion?: string;
+  maxOfficialVersion?: string;
+  exactOfficialVersion?: string;
+  updatedAt: string;
+  selectors: {
+    composer: string;
+    composerRootMarker: string;
+    modelTrigger: string;
+    profileTrigger: string;
+    threadRow: string;
+    threadTitleRow: string;
+  };
+  labels: {
+    usage: string;
+    queued: string[];
+  };
+}
+
+export const BUILTIN_CDP_RULES: CdpOperationRules = {
+  schemaVersion: 1,
+  id: 'builtin-2026-08',
+  updatedAt: '2026-08-13T00:00:00.000Z',
+  selectors: {
+    composer: '[data-codex-composer="true"],textarea,[contenteditable="true"],[role="textbox"]',
+    composerRootMarker: '[data-composer-navigation-target="add-context"]',
+    modelTrigger: '[data-codex-intelligence-trigger="true"]',
+    profileTrigger: 'button[aria-label="打开个人资料菜单"],button[aria-label*="profile" i]',
+    threadRow: '[data-app-action-sidebar-thread-id]',
+    threadTitleRow: '[data-app-action-sidebar-thread-id][data-app-action-sidebar-thread-title]',
+  },
+  labels: {
+    usage: '剩余用量',
+    queued: ['已排队', '待发送', '下一个', 'queued', 'next up'],
+  },
+};
+
+export interface CdpRuleLoaderOptions {
+  officialVersion?: string;
+  endpoint?: string;
+  cacheDirectory?: string;
+  fetch?: typeof fetch;
+}
+
+export async function loadCdpRules(options: CdpRuleLoaderOptions): Promise<CdpOperationRules> {
+  const cached = await readCachedRules(options.cacheDirectory, options.officialVersion);
+  if (options.endpoint) {
+    try {
+      const url = new URL(options.endpoint);
+      if (options.officialVersion) url.searchParams.set('version', options.officialVersion);
+      url.searchParams.set('platform', process.platform);
+      const response = await (options.fetch ?? fetch)(url, { signal: AbortSignal.timeout(3_000) });
+      if (response.ok) {
+        const candidate = validateRules(await response.json(), options.officialVersion);
+        if (candidate) {
+          await writeCachedRules(options.cacheDirectory, candidate).catch(() => undefined);
+          return candidate;
+        }
+      }
+    } catch {
+      // A bad network response must never replace a working bundled adapter.
+    }
+  }
+  return cached ?? BUILTIN_CDP_RULES;
+}
+
+export function validateRules(value: unknown, version?: string): CdpOperationRules | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const rules = value as CdpOperationRules;
+  if (rules.schemaVersion !== 1 || typeof rules.id !== 'string' || !rules.id || !rules.selectors || !rules.labels) return undefined;
+  const selectors = Object.values(rules.selectors);
+  if (selectors.some((item) => typeof item !== 'string' || !item || item.length > 500 || /[{};]|javascript:/i.test(item))) return undefined;
+  if (!Array.isArray(rules.labels.queued) || rules.labels.queued.some((item) => typeof item !== 'string' || item.length > 80)) return undefined;
+  if (typeof rules.labels.usage !== 'string' || rules.labels.usage.length > 80) return undefined;
+  if (version && !matchesOfficialVersion(rules, version)) return undefined;
+  return rules;
+}
+
+export function matchesOfficialVersion(rules: CdpOperationRules, version: string): boolean {
+  if (rules.exactOfficialVersion && compareVersions(version, rules.exactOfficialVersion) !== 0) return false;
+  if (rules.minOfficialVersion && compareVersions(version, rules.minOfficialVersion) < 0) return false;
+  if (rules.maxOfficialVersion && compareVersions(version, rules.maxOfficialVersion) > 0) return false;
+  return true;
+}
+
+function compareVersions(left: string, right: string): number {
+  const a = String(left).split(/[^0-9]+/).filter(Boolean).map(Number);
+  const b = String(right).split(/[^0-9]+/).filter(Boolean).map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const delta = (a[index] ?? 0) - (b[index] ?? 0);
+    if (delta) return delta > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+async function readCachedRules(directory?: string, version?: string): Promise<CdpOperationRules | undefined> {
+  if (!directory) return undefined;
+  try { return validateRules(JSON.parse(await readFile(path.join(directory, 'cdp-rules.json'), 'utf8')), version); }
+  catch { return undefined; }
+}
+
+async function writeCachedRules(directory: string | undefined, rules: CdpOperationRules): Promise<void> {
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'cdp-rules.json'), JSON.stringify(rules, null, 2), { mode: 0o600 });
+}

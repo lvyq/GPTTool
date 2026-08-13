@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
+import { BUILTIN_CDP_RULES, type CdpOperationRules } from './cdp-rules.ts';
 
 interface CdpTarget {
   id?: string;
@@ -22,6 +23,7 @@ export interface CdpClientOptions {
   port?: number;
   fetch?: typeof fetch;
   connectTimeoutMs?: number;
+  rules?: CdpOperationRules;
 }
 
 export interface ComposerPreferences {
@@ -83,6 +85,7 @@ export class CdpClient extends EventEmitter {
   #nextId = 1;
   #pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   #composerPreferencesCache?: ComposerPreferences;
+  #rules: CdpOperationRules;
 
   constructor(options: CdpClientOptions = {}) {
     super();
@@ -90,7 +93,11 @@ export class CdpClient extends EventEmitter {
     this.port = options.port ?? 39252;
     this.#fetch = options.fetch ?? fetch;
     this.#connectTimeoutMs = options.connectTimeoutMs ?? 8_000;
+    this.#rules = options.rules ?? BUILTIN_CDP_RULES;
   }
+
+  setRules(rules: CdpOperationRules): void { this.#rules = rules; this.#composerPreferencesCache = undefined; }
+  get rulesId(): string { return this.#rules.id; }
 
   get connected(): boolean { return this.#socket?.readyState === WebSocket.OPEN; }
 
@@ -165,7 +172,7 @@ export class CdpClient extends EventEmitter {
     while (Date.now() < deadline) {
       const found = await this.evaluate<boolean>(`(() => {
         const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 40 && r.height > 20 && s.visibility !== 'hidden' && s.display !== 'none'; };
-        return [...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].some(visible);
+        return [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})].some(visible);
       })()`).catch(() => false);
       if (found) return;
       await delay(250);
@@ -189,13 +196,13 @@ export class CdpClient extends EventEmitter {
         const style = getComputedStyle(element);
         return rect.width > 20 && rect.height > 20 && style.display !== 'none' && style.visibility !== 'hidden';
       };
-      const editors = [...document.querySelectorAll('[data-codex-composer="true"],textarea,[contenteditable="true"],[role="textbox"]')]
+      const editors = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})]
         .filter(visible)
         .sort((left, right) => right.getBoundingClientRect().bottom - left.getBoundingClientRect().bottom);
       const editor = editors[0];
       let root = editor instanceof HTMLElement ? editor : null;
       for (let depth = 0; root?.parentElement && depth < 10; depth += 1) {
-        if (root.querySelector('[data-composer-navigation-target="add-context"]')) break;
+        if (root.querySelector(${JSON.stringify(this.#rules.selectors.composerRootMarker)})) break;
         root = root.parentElement;
       }
       const submitControl = Boolean(root && [...root.querySelectorAll('button')]
@@ -204,9 +211,9 @@ export class CdpClient extends EventEmitter {
         runtime: document.readyState === 'interactive' || document.readyState === 'complete',
         composer: Boolean(editor),
         submitControl,
-        modelControl: Boolean(document.querySelector('[data-codex-intelligence-trigger="true"]')),
-        usageControl: Boolean(document.querySelector('button[aria-label="打开个人资料菜单"],button[aria-label*="profile" i]')),
-        taskMetadata: Boolean(document.querySelector('[data-app-action-sidebar-thread-id]'))
+        modelControl: Boolean(document.querySelector(${JSON.stringify(this.#rules.selectors.modelTrigger)})),
+        usageControl: Boolean(document.querySelector(${JSON.stringify(this.#rules.selectors.profileTrigger)})),
+        taskMetadata: Boolean(document.querySelector(${JSON.stringify(this.#rules.selectors.threadRow)}))
       };
     })()`);
     return {
@@ -218,7 +225,7 @@ export class CdpClient extends EventEmitter {
 
   async threadTitles(): Promise<Record<string, string>> {
     return this.evaluate<Record<string, string>>(`(() => Object.fromEntries(
-      [...document.querySelectorAll('[data-app-action-sidebar-thread-id][data-app-action-sidebar-thread-title]')]
+      [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.threadTitleRow)})]
         .map((element) => {
           const id = String(element.getAttribute('data-app-action-sidebar-thread-id') || '').replace(/^local:/, '');
           const title = String(element.getAttribute('data-app-action-sidebar-thread-title') || '').trim();
@@ -231,7 +238,7 @@ export class CdpClient extends EventEmitter {
   async openThread(threadId: string): Promise<boolean> {
     return this.evaluate<boolean>(`(() => {
       const id = ${JSON.stringify(`local:${threadId}`)};
-      const row = [...document.querySelectorAll('[data-app-action-sidebar-thread-id]')]
+      const row = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.threadRow)})]
         .find((element) => element.getAttribute('data-app-action-sidebar-thread-id') === id);
       if (!(row instanceof HTMLElement)) return false;
       row.click();
@@ -446,7 +453,7 @@ export class CdpClient extends EventEmitter {
   }
 
   async usageInfo(): Promise<AccountUsageInfo> {
-    const profileTrigger = 'button[aria-label="打开个人资料菜单"]';
+    const profileTrigger = this.#rules.selectors.profileTrigger;
     try {
       const expanded = await this.evaluate<boolean>(`document.querySelector(${JSON.stringify(profileTrigger)})?.getAttribute('aria-expanded') === 'true'`);
       if (!expanded) await this.#clickElement(profileTrigger);
@@ -538,7 +545,7 @@ export class CdpClient extends EventEmitter {
           const style = getComputedStyle(element);
           return rect.width > 40 && rect.height > 20 && style.visibility !== 'hidden' && style.display !== 'none';
         };
-        const target = [...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')]
+        const target = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})]
           .filter(visible)
           .sort((left, right) => right.getBoundingClientRect().bottom - left.getBoundingClientRect().bottom)[0];
         if (!(target instanceof HTMLElement)) return false;
@@ -571,7 +578,7 @@ export class CdpClient extends EventEmitter {
         const style = getComputedStyle(element);
         return rect.width > 40 && rect.height > 20 && style.visibility !== 'hidden' && style.display !== 'none';
       };
-      const editor = [...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')]
+      const editor = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})]
         .filter(visible)
         .sort((left, right) => right.getBoundingClientRect().bottom - left.getBoundingClientRect().bottom)[0];
       if (!(editor instanceof HTMLElement)) return false;
@@ -637,7 +644,7 @@ export class CdpClient extends EventEmitter {
     await this.waitForComposer();
     const focused = await this.evaluate<boolean>(`(() => {
       const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 40 && r.height > 20 && s.visibility !== 'hidden' && s.display !== 'none'; };
-      const candidates = [...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);
+      const candidates = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})].filter(visible);
       const el = candidates.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
       if (!el) return false;
       el.focus();
@@ -659,14 +666,14 @@ export class CdpClient extends EventEmitter {
         const style = getComputedStyle(element);
         return rect.width > 20 && rect.height > 20 && style.visibility !== 'hidden' && style.display !== 'none';
       };
-      const editors = [...document.querySelectorAll('[data-codex-composer="true"],textarea,[contenteditable="true"],[role="textbox"]')]
+      const editors = [...document.querySelectorAll(${JSON.stringify(this.#rules.selectors.composer)})]
         .filter(visible)
         .sort((left, right) => right.getBoundingClientRect().bottom - left.getBoundingClientRect().bottom);
       const editor = editors[0];
       if (!(editor instanceof HTMLElement)) return false;
       let root = editor;
       for (let depth = 0; root.parentElement && depth < 10; depth += 1) {
-        if (root.querySelector('[data-composer-navigation-target="add-context"]')) break;
+        if (root.querySelector(${JSON.stringify(this.#rules.selectors.composerRootMarker)})) break;
         root = root.parentElement;
       }
       const candidates = [...root.querySelectorAll('button')]

@@ -22,6 +22,7 @@
   let queueLoadVersion = 0;
   let queueMutation = Promise.resolve();
   let queueSnapshot = { threadId: '', activeTurnId: null, items: [] };
+  let officialQueueItems = [];
   let editingQueueId = '';
   let editingQueueDraft = '';
   let queueCollapsed = false;
@@ -952,9 +953,16 @@
         const title = document.createElement('strong'); title.textContent = thread.name || thread.preview || '未命名任务';
         const time = document.createElement('small'); time.textContent = formatTime(thread.updatedAt);
         button.append(title, time); button.addEventListener('click', () => selectThread(thread.id));
-        const renameTask = renameActionButton(`重命名任务 ${title.textContent}`);
-        renameTask.addEventListener('click', () => openRenameDialog({ type: 'thread', key: thread.id, name: title.textContent }));
-        row.append(button, renameTask); body.append(row);
+        const running = thread?.status?.type === 'active' || thread?.status === 'active';
+        if (running) {
+          row.classList.add('running');
+          const indicator = document.createElement('span');
+          indicator.className = 'thread-running-indicator';
+          indicator.title = '任务正在运行';
+          indicator.setAttribute('aria-label', '任务正在运行');
+          row.append(button, indicator);
+        } else row.append(button);
+        body.append(row);
       }
       section.append(heading, body);
       ui.threadList.append(section);
@@ -1740,7 +1748,7 @@
 
   function renderRichText(container, source) {
     container.replaceChildren();
-    const text = String(source || '').replace(/\r\n/g, '\n');
+    const text = normalizeVisibleMessageText(source);
     const fence = /```([^\n`]*)\n?([\s\S]*?)```/g;
     let cursor = 0; let match;
     while ((match = fence.exec(text))) {
@@ -1749,6 +1757,16 @@
       cursor = match.index + match[0].length;
     }
     renderProse(container, text.slice(cursor));
+  }
+
+  function normalizeVisibleMessageText(source) {
+    return String(source || '')
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .filter((line) => !/^\s*::(?:git-(?:stage|commit|create-branch|push|create-pr)|code-comment|created-thread)\s*\{.*\}\s*$/i.test(line))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   function renderProse(container, source) {
@@ -1851,6 +1869,7 @@
     editingQueueId = '';
     editingQueueDraft = '';
     queueSnapshot = { threadId, activeTurnId: null, items: [] };
+    officialQueueItems = [];
     renderQueue();
   }
 
@@ -1898,7 +1917,8 @@
     const next = normalizeQueueSnapshot(value, fallbackThreadId);
     if (!next.threadId || next.threadId !== selectedThreadId) return;
     const pendingItems = [...pendingQueueEntries.values()].filter((item) => item.threadId === next.threadId && !next.items.some((queued) => queued.text === item.text));
-    queueSnapshot = { ...next, items: [...next.items, ...pendingItems] };
+    const externalItems = officialQueueItems.filter((item) => !next.items.some((queued) => queued.id === item.id));
+    queueSnapshot = { ...next, items: [...next.items, ...externalItems, ...pendingItems] };
     if (next.activeTurnId) {
       currentTurnId = next.activeTurnId;
       turnStarting = false;
@@ -1948,7 +1968,7 @@
         main.append(attachmentCount);
       }
       const footer = document.createElement('div'); footer.className = 'queue-footer';
-      const state = document.createElement('span'); state.className = 'queue-status'; state.textContent = usageExhausted ? '等待额度恢复' : item.local ? '正在加入…' : index === 0 ? '下一个执行' : '等待执行';
+      const state = document.createElement('span'); state.className = 'queue-status'; state.textContent = item.source === 'official' ? '来自官方客户端' : usageExhausted ? '等待额度恢复' : item.local ? '正在加入…' : index === 0 ? '下一个执行' : '等待执行';
       footer.append(state);
       const actions = document.createElement('div'); actions.className = 'queue-actions';
       const context = `第 ${index + 1} 条排队消息`;
@@ -1963,9 +1983,9 @@
         const down = queueButton('down', `下移${context}`, () => reorderQueuedItem(item.id, index + 1));
         const edit = queueButton('edit', `编辑${context}`, () => editQueuedItem(item));
         const remove = queueButton('delete', `删除${context}`, () => removeQueuedItem(item.id)); remove.classList.add('queue-remove');
-        top.disabled = up.disabled = !connectionOnline || hasPendingItem || index === 0;
-        down.disabled = !connectionOnline || hasPendingItem || index === queueSnapshot.items.length - 1;
-        edit.disabled = remove.disabled = item.local || !connectionOnline;
+        top.disabled = up.disabled = item.readOnly || !connectionOnline || hasPendingItem || index === 0;
+        down.disabled = item.readOnly || !connectionOnline || hasPendingItem || index === queueSnapshot.items.length - 1;
+        edit.disabled = remove.disabled = item.readOnly || item.local || !connectionOnline;
         actions.append(top, up, down, edit, remove);
       }
       footer.append(actions); main.append(footer); row.append(position, main); ui.queueList.append(row);
@@ -2447,6 +2467,12 @@
   function handleEvent(method, params) {
     if (method === 'approval/auto/approved') { toast(`已在后台自动${params.label || '批准'}一次审批`); return; }
     if (method === 'queue.updated') { applyQueueSnapshot(params); return; }
+    if (method === 'official/queue/updated') {
+      if (params.threadId !== selectedThreadId) return;
+      officialQueueItems = Array.isArray(params.items) ? params.items : [];
+      applyQueueSnapshot({ ...queueSnapshot, items: [...queueSnapshot.items.filter((item) => item.source !== 'official'), ...officialQueueItems] });
+      return;
+    }
     if (method === 'queue.error') { handleQueueError(params); return; }
     if (method === 'thread/list/updated') {
       renderThreads(Array.isArray(params?.data) ? params.data : []);
@@ -2461,7 +2487,9 @@
         if (!message.content) { message.content = document.createElement('div'); message.content.className = 'content'; message.node.append(message.content); }
         message.node.classList.add('streaming'); target = message.content; streamItems.set(params.itemId, target);
       }
-      target.textContent += params.delta || '';
+      const nextText = `${liveItemText.get(params.itemId) || ''}${params.delta || ''}`;
+      liveItemText.set(params.itemId, nextText);
+      renderRichText(target, nextText);
       showWorkingPlaceholder(params.turnId || currentTurnId);
       scrollBottom();
     }
@@ -2488,6 +2516,8 @@
     if (method === 'item/plan/delta' || method === 'turn/plan/delta') updateLiveCompact(params.itemId || `plan-${params.turnId || currentTurnId}`, 'plan', '执行计划', params.delta || params.text || '', 'rich');
     if (method === 'turn/started') {
       currentTurnId = params.turn?.id || params.turnId || currentTurnId; turnStarting = false; setRunning(true); showWorkingPlaceholder(currentTurnId);
+      const cached = threadCache.get(params.threadId);
+      if (cached) { cached.status = { type: 'active' }; renderThreads([...threadCache.values()]); }
     }
     if (method === 'turn/completed') {
       clearWorkingPlaceholder(); ui.messages.querySelectorAll('.streaming').forEach((node) => node.classList.remove('streaming'));
@@ -2497,6 +2527,8 @@
       if (!completedTurnId || queueSnapshot.activeTurnId === completedTurnId) queueSnapshot = { ...queueSnapshot, activeTurnId: null };
       currentTurnId = queueSnapshot.activeTurnId || ''; turnStarting = false;
       setRunning(Boolean(currentTurnId)); streamItems.clear(); liveItemText.clear();
+      const cached = threadCache.get(params.threadId);
+      if (cached) cached.status = { type: 'idle' };
       loadThreads();
     }
   }

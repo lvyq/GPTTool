@@ -12,7 +12,7 @@ import {
   summarizeCompatibility,
   type OfficialCompatibilityReport,
 } from './compatibility.ts';
-import { CodexSessionStore, type CodexThread, type CodexTurn } from './codex-session-store.ts';
+import { CodexSessionStore, type CodexHistoryItem, type CodexThread, type CodexTurn } from './codex-session-store.ts';
 import {
   inspectCodexProvider,
   type CodexProviderStatus,
@@ -26,6 +26,7 @@ import {
   type OfficialDirectoryEntry,
   type OfficialAppServerTransport,
 } from './thread-metadata-client.ts';
+import { loadCdpRules } from './cdp-rules.ts';
 
 export interface CodexServiceOptions {
   executable: string;
@@ -47,6 +48,7 @@ export interface CodexServiceOptions {
   officialAppVersion?: string;
   compatibilityCheck?: () => Promise<OfficialCompatibilityReport>;
   appServerClient?: OfficialAppServerTransport | null;
+  cdpRulesEndpoint?: string;
 }
 
 interface WatchedThread {
@@ -55,6 +57,7 @@ interface WatchedThread {
   agentText: string;
   userItemIds: Set<string>;
   processItems: Map<string, string>;
+  officialQueueItemIds: Set<string>;
 }
 
 interface PendingThread {
@@ -128,6 +131,12 @@ export class CodexService {
   async start(): Promise<void> {
     if (this.running) return;
     try {
+      const rules = await loadCdpRules({
+        officialVersion: this.options.officialAppVersion,
+        endpoint: this.options.cdpRulesEndpoint,
+        cacheDirectory: this.options.sessionCacheDirectory ? path.join(this.options.sessionCacheDirectory, 'adapter') : undefined,
+      });
+      this.#cdp.setRules?.(rules);
       await this.#cdp.connect();
       this.#cdp.off('disconnect', this.#onDisconnect);
       this.#cdp.off('error', this.#onCdpError);
@@ -570,6 +579,7 @@ export class CodexService {
       agentText: agent?.text ?? '',
       userItemIds: new Set(thread.turns?.flatMap((turn) => turn.items.filter((item) => item.type === 'userMessage').map((item) => item.id)) ?? []),
       processItems: new Map((lastTurn?.items ?? []).filter(isProcessItem).map((item) => [item.id, JSON.stringify(item)])),
+      officialQueueItemIds: new Set(),
     });
   }
 
@@ -606,6 +616,28 @@ export class CodexService {
     for (const user of lastTurn.items.filter((item) => item.type === 'userMessage')) {
       if (previous.userItemIds.has(user.id)) continue;
       previous.userItemIds.add(user.id);
+      if (previous.activeTurnId && currentActiveId === previous.activeTurnId) {
+        previous.officialQueueItemIds.add(user.id);
+        this.#emit({
+          method: 'official/queue/updated',
+          params: {
+            threadId: thread.id,
+            items: [...previous.officialQueueItemIds].map((id) => {
+              const item = lastTurn.items.find((candidate) => candidate.id === id && candidate.type === 'userMessage');
+              return item ? {
+                id: `official:${id}`,
+                threadId: thread.id,
+                text: historyItemText(item),
+                attachments: historyItemAttachments(item),
+                createdAt: Date.now(),
+                status: 'queued',
+                source: 'official',
+                readOnly: true,
+              } : undefined;
+            }).filter(Boolean),
+          },
+        });
+      }
       this.#emit({ method: 'item/completed', params: { threadId: thread.id, turnId: lastTurn.id, item: user } });
     }
     for (const item of lastTurn.items.filter(isProcessItem)) {
@@ -639,6 +671,10 @@ export class CodexService {
     if (previous.activeTurnId && !currentActiveId) {
       if (agent) this.#emit({ method: 'item/completed', params: { threadId: thread.id, turnId: lastTurn.id, item: { ...agent, status: 'completed' } } });
       this.#emit({ method: 'turn/completed', params: { threadId: thread.id, turn: lastTurn } });
+      if (previous.officialQueueItemIds.size) {
+        previous.officialQueueItemIds.clear();
+        this.#emit({ method: 'official/queue/updated', params: { threadId: thread.id, items: [] } });
+      }
     }
     previous.activeTurnId = currentActiveId;
   }
@@ -714,6 +750,32 @@ function textFromInput(value: unknown, allowEmpty = false): string {
   const text = value.map((part) => stringValue(asRecord(part)?.text)).filter(Boolean).join('\n').trim();
   if (!text && !allowEmpty) throw new Error('消息内容不能为空');
   return text;
+}
+
+function historyItemText(item: CodexHistoryItem): string {
+  if (item.text?.trim()) return item.text.trim();
+  return (item.content ?? [])
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n');
+}
+
+function historyItemAttachments(item: CodexHistoryItem): Array<{
+  id: string;
+  name: string;
+  mimeType: string;
+  imageUrl?: string;
+}> {
+  return (item.content ?? []).flatMap((part, index) => {
+    if (part.type !== 'attachment') return [];
+    return [{
+      id: `official:${item.id}:${index}`,
+      name: part.name || `附件 ${index + 1}`,
+      mimeType: part.mimeType || 'application/octet-stream',
+      ...(part.imageUrl ? { imageUrl: part.imageUrl } : {}),
+    }];
+  });
 }
 
 function attachmentPaths(value: unknown): CodexAttachment[] {

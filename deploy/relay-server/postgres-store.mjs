@@ -19,6 +19,27 @@ const { Pool } = pg;
 export class PostgresRelayStore {
   constructor(pool) { this.pool = pool; }
 
+  async cdpRulesFor(version, platform) {
+    const { rows } = await this.pool.query(
+      `SELECT payload FROM cdp_rule_sets
+       WHERE enabled = TRUE AND (platform = 'all' OR platform = $1)
+       ORDER BY priority DESC, updated_at DESC`,
+      [platform || 'all'],
+    );
+    return rows.map((row) => row.payload).find((rules) => matchesCdpVersion(rules, version));
+  }
+
+  async putCdpRules(rules, platform = 'all', priority = 0) {
+    await this.pool.query(
+      `INSERT INTO cdp_rule_sets (id, platform, payload, enabled, priority, updated_at)
+       VALUES ($1, $2, $3::jsonb, TRUE, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET platform = EXCLUDED.platform, payload = EXCLUDED.payload,
+       enabled = TRUE, priority = EXCLUDED.priority, updated_at = EXCLUDED.updated_at`,
+      [rules.id, platform || 'all', JSON.stringify(rules), Number(priority) || 0, Date.now()],
+    );
+    return rules;
+  }
+
   async createUser(username, password) {
     const normalized = normalizeUsername(username);
     validatePassword(password);
@@ -312,10 +333,34 @@ async function initializeSchema(pool) {
       PRIMARY KEY (device_id, kind, record_key)
     )`,
     'CREATE INDEX IF NOT EXISTS device_records_updated_at ON device_records(device_id, updated_at DESC)',
+    `CREATE TABLE IF NOT EXISTS cdp_rule_sets (
+      id VARCHAR(128) PRIMARY KEY, platform VARCHAR(32) NOT NULL DEFAULT 'all', payload JSONB NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE, priority INTEGER NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS cdp_rule_sets_lookup ON cdp_rule_sets(enabled, platform, priority DESC, updated_at DESC)',
   ];
   for (const statement of statements) await pool.query(statement);
   await pool.query('DELETE FROM pairings WHERE expires_at <= $1', [Date.now()]);
   await pool.query('DELETE FROM login_sessions WHERE expires_at <= $1', [Date.now()]);
+}
+
+function matchesCdpVersion(rules, version) {
+  if (!rules || rules.schemaVersion !== 1 || !rules.selectors) return false;
+  if (!version) return !rules.exactOfficialVersion;
+  if (rules.exactOfficialVersion && compareCdpVersions(version, rules.exactOfficialVersion) !== 0) return false;
+  if (rules.minOfficialVersion && compareCdpVersions(version, rules.minOfficialVersion) < 0) return false;
+  if (rules.maxOfficialVersion && compareCdpVersions(version, rules.maxOfficialVersion) > 0) return false;
+  return true;
+}
+
+function compareCdpVersions(left, right) {
+  const a = String(left).split(/[^0-9]+/).filter(Boolean).map(Number);
+  const b = String(right).split(/[^0-9]+/).filter(Boolean).map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const delta = (a[index] || 0) - (b[index] || 0);
+    if (delta) return delta > 0 ? 1 : -1;
+  }
+  return 0;
 }
 
 async function migrateJsonState(pool, stateFile, sessionsFile) {

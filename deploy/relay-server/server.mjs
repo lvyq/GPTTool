@@ -19,6 +19,7 @@ const registrationAttempts = new Map();
 const pairingAttempts = new Map();
 const claimAttempts = new Map();
 const registrationOpen = (process.env.ASTERGATE_REGISTRATION_MODE || 'open').trim().toLowerCase() !== 'closed';
+const cdpRuleAdminToken = String(process.env.GPTTOOL_CDP_RULE_ADMIN_TOKEN || '').trim();
 const MAX_RELAY_MESSAGE_BYTES = 16 * 1024 * 1024;
 const MAX_RELAY_CHUNKS = 256;
 const CHUNK_TIMEOUT_MS = 30_000;
@@ -160,6 +161,20 @@ async function handleHttp(request, response) {
 }
 
 async function handleApi(request, response, requestUrl) {
+  if (request.method === 'GET' && requestUrl.pathname === '/api/cdp-rules') {
+    const rules = await store.cdpRulesFor?.(requestUrl.searchParams.get('version') || '', requestUrl.searchParams.get('platform') || 'all');
+    response.setHeader('Cache-Control', rules ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-store');
+    return rules ? json(response, 200, rules) : json(response, 404, { error: '当前官方客户端版本暂无专用规则，将使用客户端内置兼容规则' });
+  }
+  if (request.method === 'POST' && requestUrl.pathname === '/api/admin/cdp-rules') {
+    if (!cdpRuleAdminToken || request.headers.authorization !== `Bearer ${cdpRuleAdminToken}`) return json(response, 404, { error: 'Not found' });
+    const body = await readJson(request, response); if (!body) return;
+    const rules = body.rules || body;
+    if (!rules || rules.schemaVersion !== 1 || typeof rules.id !== 'string' || !rules.selectors) return json(response, 400, { error: 'CDP 规则格式无效' });
+    if (typeof store.putCdpRules !== 'function') return json(response, 503, { error: '当前存储后端不支持云端 CDP 规则' });
+    await store.putCdpRules(rules, body.platform || 'all', body.priority || 0);
+    return json(response, 201, { ok: true, id: rules.id });
+  }
   if (request.method === 'GET' && requestUrl.pathname === '/api/session') {
     const session = await authenticatedSession(request);
     return json(response, 200, session
