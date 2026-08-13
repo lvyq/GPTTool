@@ -464,6 +464,40 @@ test('publishes live reasoning and command updates from the official rollout', a
   }
 });
 
+test('publishes official desktop queued messages with text and attachment metadata', async () => {
+  const cdp = new FakeCdpClient();
+  const sessions = new FakeSessionStore();
+  sessions.thread.turns = [{ id: 'turn-live', status: 'inProgress', items: [] }];
+  sessions.thread.status = { type: 'active' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    sessionStore: sessions as never,
+    pollIntervalMs: 10,
+  });
+  const notifications: RpcNotification[] = [];
+  service.onNotification((notification) => notifications.push(notification));
+  await service.start();
+  try {
+    await service.request('thread/read', { threadId: 'thread-1', includeTurns: true });
+    sessions.thread.turns![0]!.items.push({
+      id: 'official-queued-1',
+      type: 'userMessage',
+      content: [
+        { type: 'text', text: '继续检查这张截图' },
+        { type: 'attachment', name: 'screen.png', mimeType: 'image/png', imageUrl: 'data:image/png;base64,AA==' },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const notification = notifications.find((entry) => entry.method === 'official/queue/updated');
+    const items = (notification?.params as { items?: Array<{ text?: string; attachments?: Array<{ name?: string }> }> })?.items ?? [];
+    assert.equal(items[0]?.text, '继续检查这张截图');
+    assert.equal(items[0]?.attachments?.[0]?.name, 'screen.png');
+  } finally {
+    await service.stop();
+  }
+});
+
 test('reads official model-specific efforts and updates model with a compatible reasoning effort', async () => {
   const cdp = new FakeCdpClient();
   const service = new CodexService({

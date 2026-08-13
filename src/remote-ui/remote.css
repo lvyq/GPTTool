@@ -4965,3 +4965,14 @@ dialog,
   }
   .rename-dialog h2 { font-size: 20px; }
 }
+.thread-running-indicator {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid rgba(62, 224, 151, .22);
+  border-top-color: var(--accent, #3ee097);
+  border-radius: 50%;
+  animation: thread-running-spin .8s linear infinite;
+  margin-right: 8px;
+}
+@keyframes thread-running-spin { to { transform: rotate(360deg); } }

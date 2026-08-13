@@ -1,0 +1,21 @@
+{
+  "platform": "all",
+  "priority": 1,
+  "rules": {
+    "schemaVersion": 1,
+    "id": "builtin-2026-08",
+    "updatedAt": "2026-08-13T00:00:00.000Z",
+    "selectors": {
+      "composer": "[data-codex-composer=\"true\"],textarea,[contenteditable=\"true\"],[role=\"textbox\"]",
+      "composerRootMarker": "[data-composer-navigation-target=\"add-context\"]",
+      "modelTrigger": "[data-codex-intelligence-trigger=\"true\"]",
+      "profileTrigger": "button[aria-label=\"打开个人资料菜单\"],button[aria-label*=\"profile\" i]",
+      "threadRow": "[data-app-action-sidebar-thread-id]",
+      "threadTitleRow": "[data-app-action-sidebar-thread-id][data-app-action-sidebar-thread-title]"
+    },
+    "labels": {
+      "usage": "剩余用量",
+      "queued": ["已排队", "待发送", "下一个", "queued", "next up"]
+    }
+  }
+}

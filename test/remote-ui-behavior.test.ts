@@ -259,6 +259,15 @@ test('locks sending before weak-network checks and attaches an idempotency key',
   assert.match(source, /globalThis\.crypto\?\.randomUUID/);
 });
 
+test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
+  const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
+  const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');
+  assert.doesNotMatch(script, /renameTask = renameActionButton/);
+  assert.match(script, /thread-running-indicator/);
+  assert.match(styles, /@keyframes thread-running-spin/);
+  assert.match(script, /git-\(\?:stage\|commit\|create-branch\|push\|create-pr\)/);
+});
+
 test('allows local blob image previews through both Web security policies', async () => {
   const [localServer, publicRelay] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'remote', 'remote-codex-server.ts'), 'utf8'),
