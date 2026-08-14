@@ -20,6 +20,15 @@ export interface CdpOperationRules {
     usage: string;
     queued: string[];
   };
+  collector?: {
+    toolVersion: string;
+    officialVersion: string;
+    runtimeVersion?: string;
+    platform: string;
+    capturedAt: string;
+    capabilities: Record<string, boolean>;
+    selectorMatches: Record<string, number>;
+  };
 }
 
 export const BUILTIN_CDP_RULES: CdpOperationRules = {
@@ -77,6 +86,14 @@ export function validateRules(value: unknown, version?: string): CdpOperationRul
   if (selectors.some((item) => typeof item !== 'string' || !item || item.length > 500 || /[{};]|javascript:/i.test(item))) return undefined;
   if (!Array.isArray(rules.labels.queued) || rules.labels.queued.some((item) => typeof item !== 'string' || item.length > 80)) return undefined;
   if (typeof rules.labels.usage !== 'string' || rules.labels.usage.length > 80) return undefined;
+  if (rules.collector) {
+    const metadata = rules.collector;
+    if (typeof metadata.toolVersion !== 'string' || typeof metadata.officialVersion !== 'string'
+      || typeof metadata.platform !== 'string' || typeof metadata.capturedAt !== 'string'
+      || !metadata.capabilities || !metadata.selectorMatches) return undefined;
+    if (Object.values(metadata.capabilities).some((item) => typeof item !== 'boolean')) return undefined;
+    if (Object.values(metadata.selectorMatches).some((item) => !Number.isInteger(item) || item < 0)) return undefined;
+  }
   if (version && !matchesOfficialVersion(rules, version)) return undefined;
   return rules;
 }

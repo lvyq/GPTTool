@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>GPTTool CDP 规则采集器</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div><span class="eyebrow">GPTTOOL · COMPATIBILITY TOOL</span><h1>CDP 规则采集器</h1></div>
+      <span id="clientState" class="status">正在检测</span>
+    </header>
+    <section class="hero">
+      <div><h2>官方客户端</h2><p id="clientMessage">正在读取版本与 CDP 状态…</p></div>
+      <button id="inspect" class="secondary">重新检测</button>
+      <dl><div><dt>版本</dt><dd id="version">--</dd></div><div><dt>CDP</dt><dd id="cdpState">--</dd></div></dl>
+    </section>
+    <section class="grid">
+      <article>
+        <h2>授权采集</h2>
+        <p>仅提取选择器、匹配数量、版本号和功能探测结果。不会读取或上传聊天正文、附件、Cookie、令牌和原始 DOM。</p>
+        <label class="consent"><input id="consent" type="checkbox"> <span>我已了解范围，并允许本次采集</span></label>
+        <label class="consent"><input id="restart" type="checkbox"> <span>如未启用 CDP，允许确认后重启官方客户端</span></label>
+        <button id="collect" class="primary">授权并开始采集</button>
+      </article>
+      <article>
+        <h2>上传设置</h2>
+        <label>云端接口<input id="endpoint" type="url" spellcheck="false"></label>
+        <div class="row"><label>平台<select id="platform"><option value="darwin">macOS</option><option value="win32">Windows</option><option value="all">全部</option></select></label><label>优先级<input id="priority" type="number" value="100"></label></div>
+        <label>上传令牌<input id="token" type="password" placeholder="已配置时留空即可" autocomplete="off"></label>
+        <label class="consent"><input id="autoUpload" type="checkbox"> <span>采集成功后自动上传</span></label>
+        <button id="saveSettings" class="secondary">保存设置</button>
+      </article>
+    </section>
+    <section class="result">
+      <div class="result-head"><div><h2>规则包</h2><p id="resultSummary">尚未采集或导入</p></div><div class="actions"><button id="importRules" class="secondary">导入文件</button><button id="exportRules" class="secondary" disabled>导出文件</button><button id="uploadRules" class="primary compact" disabled>上传云端</button></div></div>
+      <pre id="preview">等待采集…</pre>
+    </section>
+    <div id="notice" role="status" aria-live="polite"></div>
+  </main>
+  <script src="./collector.js"></script>
+</body>
+</html>

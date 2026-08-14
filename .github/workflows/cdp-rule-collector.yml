@@ -1,0 +1,57 @@
+name: CDP Rule Collector
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cdp-rule-collector.yml'
+      - 'electron-builder.collector.json'
+      - 'scripts/build-collector.mjs'
+      - 'src/collector/**'
+      - 'src/collector-ui/**'
+      - 'src/codex/cdp-rules.ts'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build:collector
+      - name: Build macOS universal collector
+        run: npx electron-builder --mac dmg --universal --publish never --config electron-builder.collector.json --config.directories.output=release-collector
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GPTTool-CDP-Collector-macOS
+          path: release-collector/*.dmg
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build:collector
+      - name: Build Windows x64 collector
+        run: npx electron-builder --win nsis --x64 --publish never --config electron-builder.collector.json --config.directories.output=release-collector
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GPTTool-CDP-Collector-Windows
+          path: release-collector/*.exe
+          if-no-files-found: error

@@ -34,6 +34,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run build:collector
 
   prepare:
     needs: verify
@@ -102,6 +103,7 @@ jobs:
           test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
       - run: npm ci
       - run: npm run build
+      - run: npm run build:collector
       - name: Build Apple Silicon, Intel, and universal DMGs
         shell: bash
         run: |
@@ -114,6 +116,8 @@ jobs:
           cp "$(find release-x64 -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-x64.dmg"
           npx electron-builder --mac dmg --universal --publish never --config.directories.output=release-universal
           cp "$(find release-universal -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-universal.dmg"
+          npx electron-builder --mac dmg --universal --publish never --config electron-builder.collector.json --config.directories.output=release-collector
+          cp "$(find release-collector -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-CDP-Collector-${version}-mac-universal.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-installers
@@ -145,6 +149,7 @@ jobs:
           test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
       - run: npm ci
       - run: npm run build
+      - run: npm run build:collector
       - name: Build Windows x64 installer
         shell: bash
         run: |
@@ -153,6 +158,8 @@ jobs:
           npx electron-builder --win nsis --x64 --publish never --config.directories.output=release-windows
           mkdir -p release-final
           cp "$(find release-windows -maxdepth 1 -name '*.exe' -print -quit)" "release-final/GPTTool-${version}-windows-x64.exe"
+          npx electron-builder --win nsis --x64 --publish never --config electron-builder.collector.json --config.directories.output=release-collector
+          cp "$(find release-collector -maxdepth 1 -name '*.exe' -print -quit)" "release-final/GPTTool-CDP-Collector-${version}-windows-x64.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -212,5 +219,7 @@ jobs:
             release/GPTTool-${{ needs.prepare.outputs.version }}-mac-x64.dmg
             release/GPTTool-${{ needs.prepare.outputs.version }}-mac-universal.dmg
             release/GPTTool-${{ needs.prepare.outputs.version }}-windows-x64.exe
+            release/GPTTool-CDP-Collector-${{ needs.prepare.outputs.version }}-mac-universal.dmg
+            release/GPTTool-CDP-Collector-${{ needs.prepare.outputs.version }}-windows-x64.exe
             release/SHA256SUMS
             release/latest.json

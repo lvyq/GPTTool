@@ -23,6 +23,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run build:collector
       - name: Reject production secrets and generated artifacts
         shell: bash
         run: |

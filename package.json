@@ -27,6 +27,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:collector": "node scripts/build-collector.mjs",
     "build:gateway": "node scripts/build-gateway.mjs",
     "build:web": "node scripts/build-web-ui.mjs",
     "check": "tsc --noEmit",
@@ -36,6 +37,9 @@
     "test": "tsx --test test/*.test.ts",
     "pack:dir": "npm run build && electron-builder --dir",
     "pack": "npm run build && electron-builder",
+    "collector": "npm run build:collector && electron dist/collector/main.js",
+    "pack:collector:dir": "npm run build:collector && electron-builder --dir --config electron-builder.collector.json",
+    "pack:collector": "npm run build:collector && electron-builder --config electron-builder.collector.json",
     "release:feed": "node scripts/create-update-feed.mjs"
   },
   "dependencies": {

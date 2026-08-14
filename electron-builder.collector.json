@@ -1,0 +1,40 @@
+{
+  "appId": "com.gpttool.cdpcollector",
+  "productName": "GPTTool CDP Rule Collector",
+  "asar": true,
+  "extraMetadata": {
+    "main": "dist/collector/main.js"
+  },
+  "files": [
+    "dist/collector/**/*",
+    "dist/collector-ui/**/*",
+    "package.json",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "directories": {
+    "buildResources": "assets",
+    "output": "release-collector"
+  },
+  "mac": {
+    "icon": "assets/icon.png",
+    "category": "public.app-category.developer-tools",
+    "target": ["dmg", "zip"],
+    "extendInfo": {
+      "NSAppTransportSecurity": {
+        "NSAllowsArbitraryLoads": false,
+        "NSAllowsLocalNetworking": true
+      }
+    }
+  },
+  "win": {
+    "icon": "assets/icon.png",
+    "target": ["nsis"],
+    "artifactName": "GPTTool-CDP-Collector-${version}-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}

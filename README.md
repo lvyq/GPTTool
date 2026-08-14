@@ -30,6 +30,7 @@ GPTTool 不提供云端模型，也不代管你的 ChatGPT/Codex 登录凭据。
 - **跨平台桌面端**：Electron 桌面应用、托盘、登录启动、防系统睡眠（允许屏幕熄灭）；
 - **自托管服务**：Node.js 中继、PostgreSQL 持久化、Nginx HTTPS 反向代理；
 - **安全更新**：Ed25519 签名清单、安装包 SHA-256 与同源 HTTPS 校验。
+- **动态兼容规则**：独立、需授权的 CDP 规则采集器可按官方客户端版本生成、审阅、上传或导出规则，无需为选择器更新重新发布主客户端。
 
 ## 架构概览
 
@@ -123,6 +124,13 @@ CDP 只监听本机回环地址，不经公网暴露。公网中继也不能直�
 详见 [安全模型](docs/SECURITY_MODEL.zh-CN.md) 与 [.env.example](.env.example)。
 
 管理员部署与规则格式见 [系统管理后台](docs/ADMIN_CONSOLE.zh-CN.md)。
+
+官方客户端升级后的规则维护流程见 [CDP 规则采集器](docs/CDP_RULE_COLLECTOR.zh-CN.md)。采集器与主客户端独立构建：
+
+```bash
+npm run collector          # 本地运行
+npm run pack:collector     # 生成独立安装包
+```
 
 ## 开发与贡献
 
