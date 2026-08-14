@@ -67,6 +67,23 @@ test('desktop and web surfaces share the black white and green design system', a
   assert.match(gatewayCss, /--green:\s*#41df91/);
 });
 
+test('mobile Web surfaces keep a fixed page scale while preserving normal panning', async () => {
+  const [remoteHtml, remoteCss, gatewayHtml, gatewayCss, adminHtml] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'gateway.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'index.html'), 'utf8'),
+  ]);
+
+  for (const html of [remoteHtml, gatewayHtml, adminHtml]) {
+    assert.match(html, /maximum-scale=1/);
+    assert.match(html, /user-scalable=no/);
+  }
+  assert.match(remoteCss, /touch-action:\s*pan-x pan-y/);
+  assert.match(gatewayCss, /touch-action:\s*pan-x pan-y/);
+});
+
 test('device portal supports private in-page QR pairing without a header divider', async () => {
   const [gatewayHtml, gatewayScript, gatewayCss, relaySource] = await Promise.all([
     readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'index.html'), 'utf8'),
