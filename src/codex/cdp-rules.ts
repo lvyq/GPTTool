@@ -20,6 +20,15 @@ export interface CdpOperationRules {
     usage: string;
     queued: string[];
   };
+  /** Optional diagnostics emitted by the private rule collector. */
+  collector?: {
+    capabilities?: Partial<Record<
+      'runtime' | 'mainWindow' | 'documentReady' | 'composer' | 'threadRows' | 'modelControl' |
+      'taskMetadata' | 'usageControl' | 'submitControl' | 'profileControl' | 'composerVisible',
+      boolean
+    >>;
+    selectorMatches?: Partial<Record<keyof CdpOperationRules['selectors'] | 'submitControl', number>>;
+  };
 }
 
 export const BUILTIN_CDP_RULES: CdpOperationRules = {
@@ -77,8 +86,22 @@ export function validateRules(value: unknown, version?: string): CdpOperationRul
   if (selectors.some((item) => typeof item !== 'string' || !item || item.length > 500 || /[{};]|javascript:/i.test(item))) return undefined;
   if (!Array.isArray(rules.labels.queued) || rules.labels.queued.some((item) => typeof item !== 'string' || item.length > 80)) return undefined;
   if (typeof rules.labels.usage !== 'string' || rules.labels.usage.length > 80) return undefined;
+  // A collector result is only publishable when it proved that the minimum
+  // messaging surface exists. Older, manually-authored rule documents do not
+  // contain collector diagnostics and remain backward compatible.
+  if (rules.collector && !collectorSupportsMessaging(rules.collector)) return undefined;
   if (version && !matchesOfficialVersion(rules, version)) return undefined;
   return rules;
+}
+
+export function collectorSupportsMessaging(collector: NonNullable<CdpOperationRules['collector']>): boolean {
+  const capabilities = collector.capabilities;
+  if (!capabilities) return false;
+  const required = ['runtime', 'mainWindow', 'documentReady', 'composer', 'submitControl', 'composerVisible'] as const;
+  if (required.some((name) => capabilities[name] !== true)) return false;
+  const matches = collector.selectorMatches;
+  if (!matches) return false;
+  return Number(matches.composer ?? 0) > 0 && Number(matches.submitControl ?? 0) > 0;
 }
 
 export function matchesOfficialVersion(rules: CdpOperationRules, version: string): boolean {
@@ -100,12 +123,23 @@ function compareVersions(left: string, right: string): number {
 
 async function readCachedRules(directory?: string, version?: string): Promise<CdpOperationRules | undefined> {
   if (!directory) return undefined;
-  try { return validateRules(JSON.parse(await readFile(path.join(directory, 'cdp-rules.json'), 'utf8')), version); }
-  catch { return undefined; }
+  for (const filename of ['cdp-rules.json', 'cdp-rules.last-good.json']) {
+    try {
+      const rules = validateRules(JSON.parse(await readFile(path.join(directory, filename), 'utf8')), version);
+      if (rules) return rules;
+    } catch {
+      // Try the last-known-good adapter before falling back to bundled rules.
+    }
+  }
+  return undefined;
 }
 
 async function writeCachedRules(directory: string | undefined, rules: CdpOperationRules): Promise<void> {
   if (!directory) return;
   await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, 'cdp-rules.json'), JSON.stringify(rules, null, 2), { mode: 0o600 });
+  const contents = JSON.stringify(rules, null, 2);
+  await Promise.all([
+    writeFile(path.join(directory, 'cdp-rules.json'), contents, { mode: 0o600 }),
+    writeFile(path.join(directory, 'cdp-rules.last-good.json'), contents, { mode: 0o600 }),
+  ]);
 }

@@ -125,6 +125,7 @@ class FakeAppServerClient {
   connected = false;
   closed = false;
   requests: string[] = [];
+  calls: Array<{ method: string; params?: unknown }> = [];
   async connect(): Promise<void> { this.connected = true; }
   async close(): Promise<void> { this.closed = true; }
   respond(): void {}
@@ -133,8 +134,9 @@ class FakeAppServerClient {
   async probe(): Promise<{ initialized: true; threads: true; models: true; usage: true; directories: true }> {
     return { initialized: true, threads: true, models: true, usage: true, directories: true };
   }
-  async request<T>(method: string): Promise<T> {
+  async request<T>(method: string, params?: unknown): Promise<T> {
     this.requests.push(method);
+    this.calls.push({ method, params });
     if (method === 'thread/list') return { data: [{ id: 'thread-1', name: 'App Server 标题' }] } as T;
     if (method === 'model/list') return { data: [{
       id: 'gpt-5.6-sol', displayName: '5.6 Sol', isDefault: true,
@@ -144,6 +146,7 @@ class FakeAppServerClient {
     if (method === 'account/rateLimits/read') return { rateLimits: { primary: {
       usedPercent: 12, windowDurationMins: 10_080, resetsAt: 1_900_000_000,
     } } } as T;
+    if (method === 'turn/start') return { turn: { id: 'app-server-turn' } } as T;
     return {} as T;
   }
 }
@@ -350,6 +353,41 @@ test('injects uploaded attachments before submitting an attachment-only turn', a
     assert.deepEqual(cdp.attachedFiles, [['/private/tmp/remote-image.png']]);
     assert.deepEqual(cdp.preparedModes, ['goal']);
     assert.deepEqual(cdp.submitted, ['']);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('falls back to app-server before submission when the updated official renderer is unavailable', async () => {
+  const cdp = new FakeCdpClient();
+  cdp.failComposerWaits = 1;
+  const appServer = new FakeAppServerClient();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    sessionStore: new FakeSessionStore() as never,
+    appServerClient: appServer as never,
+    navigate: async () => undefined,
+  });
+  await service.start();
+  try {
+    const result = await service.request<{ threadId: string; turn: { id: string } }>('turn/start', {
+      threadId: 'thread-1',
+      input: [{ type: 'text', text: 'send through safe fallback' }],
+      attachments: [{ path: '/private/tmp/report.md', name: 'report.md', mimeType: 'text/markdown' }],
+    });
+    assert.equal(result.threadId, 'thread-1');
+    assert.equal(result.turn.id, 'app-server-turn');
+    assert.deepEqual(cdp.submitted, [], 'must not retry an ambiguous renderer submit');
+    const start = appServer.calls.find((call) => call.method === 'turn/start');
+    assert.deepEqual(start?.params, {
+      threadId: 'thread-1',
+      input: [
+        { type: 'text', text: 'send through safe fallback' },
+        { type: 'mention', name: 'report.md', path: '/private/tmp/report.md' },
+      ],
+      mode: 'normal',
+    });
   } finally {
     await service.stop();
   }

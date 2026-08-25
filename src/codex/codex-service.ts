@@ -96,6 +96,7 @@ export class CodexService {
   #autoApprove = false;
   #lastAutoApprovalAt = 0;
   #officialTitles: Record<string, string> = {};
+  #officialThreadOrder: string[] = [];
   #officialTitlesReadAt = 0;
   #officialTitlesRequest?: Promise<Record<string, string>>;
   #provider: CodexProviderStatus = {
@@ -382,8 +383,16 @@ export class CodexService {
   async #resumeThread(threadId: string): Promise<{ thread: CodexThread }> {
     if (this.#pendingThreads.has(threadId)) return this.#readThread(threadId, true, 12);
     let thread = await this.#sessions.readThread(threadId, true, 12);
-    await this.#navigate(`codex://threads/${encodeURIComponent(threadId)}`);
-    await this.#cdp.waitForComposer();
+    try {
+      await this.#navigate(`codex://threads/${encodeURIComponent(threadId)}`);
+      await this.#cdp.waitForComposer();
+    } catch (cdpError) {
+      if (!this.#appServer) throw cdpError;
+      await this.#appServer.request('thread/resume', { threadId }).catch((appServerError) => {
+        const message = appServerError instanceof Error ? appServerError.message : String(appServerError);
+        throw new Error(`官方界面无法打开任务，独立服务恢复也失败：${message}`);
+      });
+    }
     thread = await this.#withOfficialTitle(thread);
     this.#primeWatcher(thread);
     return { thread };
@@ -392,7 +401,17 @@ export class CodexService {
   async #threadsWithOfficialTitles(limit: number): Promise<CodexThread[]> {
     const threads = await this.#sessions.listThreads(limit);
     const titles = await this.#cachedOfficialTitles();
-    return threads.map((thread) => applyOfficialTitle(thread, titles[thread.id]));
+    const order = new Map(this.#officialThreadOrder.map((id, index) => [id, index]));
+    return threads
+      .map((thread) => applyOfficialTitle(thread, titles[thread.id]))
+      .sort((left, right) => {
+        const leftIndex = order.get(left.id);
+        const rightIndex = order.get(right.id);
+        if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex;
+        if (leftIndex !== undefined) return -1;
+        if (rightIndex !== undefined) return 1;
+        return right.updatedAt - left.updatedAt;
+      });
   }
 
   async #withOfficialTitle(thread: CodexThread): Promise<CodexThread> {
@@ -419,11 +438,13 @@ export class CodexService {
         'thread/list', { limit: 100 },
       ).catch(() => undefined);
       if (response?.data?.length) {
+        this.#officialThreadOrder = response.data.flatMap((thread) => thread.id ? [thread.id] : []);
         return Object.fromEntries(response.data
           .filter((thread) => thread.id && thread.name)
           .map((thread) => [thread.id!, thread.name!]));
       }
     }
+    this.#officialThreadOrder = [];
     return this.#cdp.threadTitles();
   }
 
@@ -434,7 +455,10 @@ export class CodexService {
       : undefined;
     const models = normalizeAppServerModels(officialModels?.data);
     if (renderer) {
-      if (!models.length) return this.#cdp.composerPreferences().catch(() => renderer);
+      if (!models.length) {
+        const preferences = await this.#cdp.composerPreferences().catch(() => renderer);
+        return { ...preferences, source: 'official-renderer', synchronized: true };
+      }
       // app-server exposes stable protocol ids (for example gpt-5.6-sol), while
       // the renderer picker accepts the human-facing label currently visible
       // in ChatGPT. Keep the renderer's values so applying a preference remains
@@ -482,6 +506,8 @@ export class CodexService {
         ...renderer,
         models: synchronizedModels,
         efforts: currentEfforts,
+        source: 'official-renderer',
+        synchronized: true,
       };
     }
     const selected = models.find((model) => model.isDefault) ?? models[0];
@@ -493,6 +519,8 @@ export class CodexService {
       effortLabel: selected.efforts.find((item) => item.value === effort)?.label ?? effort,
       models,
       efforts: selected.efforts,
+      source: 'app-server-default',
+      synchronized: false,
     };
   }
 
@@ -511,19 +539,29 @@ export class CodexService {
     const submittedAt = Date.now() - 1_000;
     const previousTurnIds = new Set<string>();
     let canonicalThreadId = threadId;
-    if (pending) {
-      const url = new URL('codex://threads/new');
-      if (pending.cwd) url.searchParams.set('path', pending.cwd);
-      await this.#navigate(url.toString());
-    } else {
-      const current = await this.#sessions.readThread(threadId, true, 8);
+    let current: CodexThread | undefined;
+    if (!pending) {
+      current = await this.#sessions.readThread(threadId, true, 8);
       for (const turn of current.turns ?? []) previousTurnIds.add(turn.id);
       this.#primeWatcher(current);
-      await this.#navigate(`codex://threads/${encodeURIComponent(threadId)}`);
     }
-    await this.#cdp.waitForComposer();
-    await this.#cdp.prepareTurnMode(mode);
-    await this.#cdp.attachFiles(attachments.map((attachment) => attachment.path));
+    // Only fall back before the renderer submit call. Once submitText starts,
+    // its result is ambiguous during a weak connection and retrying through
+    // app-server could create a duplicate message.
+    try {
+      if (pending) {
+        const url = new URL('codex://threads/new');
+        if (pending.cwd) url.searchParams.set('path', pending.cwd);
+        await this.#navigate(url.toString());
+      } else {
+        await this.#navigate(`codex://threads/${encodeURIComponent(threadId)}`);
+      }
+      await this.#cdp.waitForComposer();
+      await this.#cdp.prepareTurnMode(mode);
+      await this.#cdp.attachFiles(attachments.map((attachment) => attachment.path));
+    } catch (cdpError) {
+      return await this.#startTurnWithAppServer(threadId, text, attachments, mode, pending, current, cdpError);
+    }
     await this.#cdp.submitText(text);
 
     if (pending) {
@@ -538,6 +576,50 @@ export class CodexService {
     if (!turnId) throw new Error('官方 ChatGPT 没有确认消息发送成功，请检查附件是否仍在官方输入框中后重试');
     this.#emit({ method: 'turn/started', params: { threadId: canonicalThreadId, turn: { id: turnId, status: 'inProgress' } } });
     return { threadId: canonicalThreadId, turn: { id: turnId, status: 'inProgress' } };
+  }
+
+  async #startTurnWithAppServer(
+    requestedThreadId: string,
+    text: string,
+    attachments: CodexAttachment[],
+    mode: TurnMode,
+    pending: PendingThread | undefined,
+    current: CodexThread | undefined,
+    cdpError: unknown,
+  ): Promise<{ threadId: string; turn: { id: string; status: 'inProgress' } }> {
+    if (!this.#appServer) throw cdpError;
+    try {
+      let threadId = requestedThreadId;
+      if (pending) {
+        const started = await this.#appServer.request<{ thread?: { id?: string } }>('thread/start', {
+          cwd: pending.cwd || this.options.cwd || this.#homeDirectory,
+        });
+        threadId = requiredId(started?.thread?.id);
+        this.#pendingThreads.delete(requestedThreadId);
+      } else {
+        await this.#appServer.request('thread/resume', { threadId });
+      }
+      const input: Array<Record<string, unknown>> = [];
+      if (text) input.push({ type: 'text', text });
+      for (const attachment of attachments) {
+        input.push(attachment.mimeType?.startsWith('image/')
+          ? { type: 'localImage', path: attachment.path }
+          : { type: 'mention', name: attachment.name || path.basename(attachment.path), path: attachment.path });
+      }
+      const response = await this.#appServer.request<{ turn?: { id?: string } }>('turn/start', {
+        threadId,
+        input,
+        mode,
+      });
+      const turnId = requiredId(response?.turn?.id);
+      if (current) this.#primeWatcher(current);
+      this.#emit({ method: 'turn/started', params: { threadId, turn: { id: turnId, status: 'inProgress' }, transport: 'app-server' } });
+      return { threadId, turn: { id: turnId, status: 'inProgress' } };
+    } catch (appServerError) {
+      const rendererMessage = cdpError instanceof Error ? cdpError.message : String(cdpError);
+      const serverMessage = appServerError instanceof Error ? appServerError.message : String(appServerError);
+      throw new Error(`官方客户端界面通道不可用（${rendererMessage}），app-server 降级也失败（${serverMessage}）`);
+    }
   }
 
   async #steerTurn(threadId: string, turnId: string, text: string): Promise<{ threadId: string; turnId: string }> {
@@ -850,6 +932,8 @@ function providerComposerPreferences(provider: CodexProviderStatus): {
   efforts: [];
   provider: CodexProviderStatus;
   readOnly: true;
+  source: 'provider';
+  synchronized: true;
 } {
   const model = provider.model || provider.name;
   return {
@@ -860,6 +944,8 @@ function providerComposerPreferences(provider: CodexProviderStatus): {
     efforts: [],
     provider,
     readOnly: true,
+    source: 'provider',
+    synchronized: true,
   };
 }
 

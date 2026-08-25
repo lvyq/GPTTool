@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
+  const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showModel', 'modelBadge', 'modelPopover', 'modelDetail', 'modelEffortDetail', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
   const ui = Object.fromEntries(ids.map((id) => [id, $(id)]));
   const shell = document.querySelector('.shell');
   let socket;
@@ -71,6 +71,7 @@
   let intelligenceSnapshot;
   let intelligenceDirty = false;
   let intelligenceRevision = 0;
+  let modelLoadedAt = 0;
   let voiceRecognition;
   let voiceRecognitionConstructor;
   let voiceRecognitionStarted = false;
@@ -148,6 +149,7 @@
       renderComposerInputMode();
     }
     ui.showTaskSettings.addEventListener('click', showTaskSettings);
+    ui.showModel.addEventListener('click', toggleModelPopover);
     ui.showUsage.addEventListener('click', toggleUsagePopover);
     ui.closeTaskSettings.addEventListener('click', () => ui.taskSettingsDialog.close());
     ui.taskSettingsDialog.addEventListener('click', (event) => { if (event.target === ui.taskSettingsDialog) ui.taskSettingsDialog.close(); });
@@ -179,6 +181,9 @@
     });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDrawer(); });
     document.addEventListener('pointerdown', (event) => {
+      if (!ui.modelPopover.classList.contains('hidden') && !ui.modelPopover.contains(event.target) && !ui.showModel.contains(event.target)) {
+        setModelPopover(false);
+      }
       if (!ui.usagePopover.classList.contains('hidden') && !ui.usagePopover.contains(event.target) && !ui.showUsage.contains(event.target)) {
         setUsagePopover(false);
       }
@@ -484,6 +489,7 @@
       reconnectAttempt = 0;
       setConnection(true, '已连接本机 Codex'); loadThreads();
       void loadAutoApproval();
+      void loadModelSummary(true);
       void loadUsage(true);
       void loadCompatibility();
       const threadId = retryThreadId; retryThreadId = '';
@@ -579,6 +585,33 @@
     ui.taskSettingsDialog.showModal();
     intelligenceDirty = false;
     await Promise.all([loadAutoApproval(), loadIntelligenceSettings()]);
+  }
+
+  function toggleModelPopover() {
+    const opening = ui.modelPopover.classList.contains('hidden');
+    setModelPopover(opening);
+    if (opening && Date.now() - modelLoadedAt > 120_000) void loadModelSummary(true);
+  }
+
+  function setModelPopover(open) {
+    ui.modelPopover.classList.toggle('hidden', !open);
+    ui.showModel.setAttribute('aria-expanded', String(open));
+  }
+
+  async function loadModelSummary(force = false) {
+    if (!force && Date.now() - modelLoadedAt < 120_000) return intelligenceSnapshot;
+    try {
+      const result = await rpc('composer.preferences.get');
+      applyIntelligenceSnapshot(result);
+      return result;
+    } catch (error) {
+      if (!modelLoadedAt) {
+        ui.modelBadge.textContent = '--';
+        ui.modelDetail.textContent = '暂时无法读取当前模型';
+        ui.modelEffortDetail.textContent = error.message;
+      }
+      return undefined;
+    }
   }
 
   async function loadIntelligenceSettings() {
@@ -801,7 +834,9 @@
   }
 
   function applyIntelligenceSnapshot(result, forceRender = false) {
-    if (!result || !Array.isArray(result.models)) return;
+    if (!result) return;
+    applyModelSummary(result);
+    if (!Array.isArray(result.models)) return;
     intelligenceSnapshot = result;
     intelligenceModels = normalizeModelOptions(result);
     if (!ui.taskSettingsDialog.open || (intelligenceDirty && !forceRender)) return;
@@ -818,6 +853,25 @@
       ? result.message || `当前由 ${result.provider?.name || '第三方服务'} 管理模型设置`
       : `当前：${result.model || '默认模型'} · ${result.effortLabel || result.effort || '默认强度'}`;
     ui.saveIntelligence.disabled = result.readOnly || !ui.effortSelect.options.length;
+  }
+
+  function applyModelSummary(result) {
+    const model = String(result.model || '').trim();
+    if (!model) return;
+    modelLoadedAt = Date.now();
+    const normalized = model.replace(/^gpt[-\s]*/i, '').trim();
+    const parts = normalized.split(/[-\s]+/).filter(Boolean);
+    const family = parts.at(-1) || normalized;
+    const compact = /^(sol|terra|luna)$/i.test(family) ? family : normalized;
+    ui.modelBadge.textContent = compact.slice(0, 5);
+    ui.modelBadge.classList.toggle('long', compact.length > 3);
+    ui.showModel.title = `当前模型：${model}`;
+    ui.modelDetail.textContent = `当前模型：${model}`;
+    const effort = result.effortLabel || result.effort || '默认强度';
+    ui.modelEffortDetail.textContent = `${effort}${result.cached ? ' · 缓存，正在后台同步' : ' · 已与本机设置同步'}`;
+    if (result.synchronized === false) {
+      ui.modelEffortDetail.textContent = `${effort} · app-server 默认值，官方界面暂不可读`;
+    }
   }
 
   function renderDiscreteSlider(select, slider, valueLabel, ticks) {

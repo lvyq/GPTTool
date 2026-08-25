@@ -644,6 +644,32 @@ header p {
   color: var(--muted);
 }
 
+.model-summary-button {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(65, 223, 145, .28);
+  background: #101110;
+}
+
+.model-badge {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #41df91;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.02em;
+  text-transform: capitalize;
+}
+
+.model-badge.long { font-size: 6.5px; }
+.model-popover { right: 78px; }
+.model-popover::before { right: 18px; }
+
 .usage-summary-button::before {
   content: none;
 }

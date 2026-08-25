@@ -112,6 +112,19 @@ test('renders remaining usage as a compact green and white ring without a percen
   assert.match(stylesheet, /\.usage-ring > span/);
 });
 
+test('shows the current official model beside remaining usage and updates it from live preferences', async () => {
+  const [markup, source, stylesheet] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+  ]);
+  assert.match(markup, /id="showModel"[\s\S]*id="modelBadge"/);
+  assert.match(source, /preferences\.updated[\s\S]*applyIntelligenceSnapshot/);
+  assert.match(source, /function applyModelSummary\(result\)/);
+  assert.match(source, /loadModelSummary\(true\)/);
+  assert.match(stylesheet, /\.model-badge/);
+});
+
 test('formats ISO quota reset timestamps in the browser local timezone', async () => {
   const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
 

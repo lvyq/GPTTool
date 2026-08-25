@@ -32,6 +32,11 @@
             <p id="composerError" class="header-error" role="alert"></p>
           </div>
           <div class="header-actions">
+            <button id="showModel" type="button" class="header-icon-button model-summary-button" aria-label="查看当前模型" title="正在读取当前模型" aria-expanded="false"><span id="modelBadge" class="model-badge" aria-hidden="true">--</span></button>
+            <div id="modelPopover" class="usage-popover model-popover hidden" role="status">
+              <strong id="modelDetail">正在读取当前模型…</strong>
+              <small id="modelEffortDetail">设置与本机官方客户端同步</small>
+            </div>
             <button id="showUsage" type="button" class="header-icon-button usage-summary-button" aria-label="查看剩余额度" title="正在读取剩余额度" aria-expanded="false"><span class="usage-ring" aria-hidden="true"><span id="usagePercent">--</span></span></button>
             <div id="usagePopover" class="usage-popover hidden" role="status">
               <strong id="usageDetail">正在读取剩余额度…</strong>

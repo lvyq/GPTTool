@@ -32,6 +32,8 @@ export interface ComposerPreferences {
   effortLabel: string;
   models: ComposerModelOption[];
   efforts: ReasoningEffortOption[];
+  source?: 'official-renderer' | 'app-server-default' | 'provider';
+  synchronized?: boolean;
 }
 
 export interface ReasoningEffortOption {
