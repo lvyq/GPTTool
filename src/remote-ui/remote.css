@@ -5003,3 +5003,56 @@ dialog,
   margin-right: 8px;
 }
 @keyframes thread-running-spin { to { transform: rotate(360deg); } }
+
+/* Keep the current-model and quota controls visible as a stable pair on
+   narrow iPhone headers.  Older layouts allowed the first action to shrink
+   out of view when a long task title was restored from history. */
+.header-actions {
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+}
+
+.thread-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.model-summary-button {
+  display: grid !important;
+  flex: 0 0 36px;
+  width: 36px;
+  min-width: 36px;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.model-badge {
+  flex: none;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .thread-heading h1,
+  .thread-heading p,
+  .header-error {
+    max-width: calc(100vw - 188px);
+  }
+
+  .model-summary-button,
+  .usage-summary-button,
+  .task-settings-button {
+    flex: 0 0 31px;
+    width: 31px;
+    min-width: 31px;
+    height: 31px;
+  }
+
+  .model-badge,
+  .usage-ring {
+    width: 25px;
+    height: 25px;
+  }
+}
