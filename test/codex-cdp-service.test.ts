@@ -328,6 +328,36 @@ test('reads titles, model capabilities and quota from app-server while keeping C
   }
 });
 
+test('filters retained local rollouts that are absent from the official app-server task list', async () => {
+  const cdp = new FakeCdpClient();
+  const appServer = new FakeAppServerClient();
+  const sessions = new FakeSessionStore();
+  const hiddenThread: CodexThread = {
+    ...structuredClone(sessions.thread),
+    id: 'local-only-thread',
+    name: '仅本地残留任务',
+    updatedAt: sessions.thread.updatedAt + 10_000,
+  };
+  const sessionStore = {
+    ...sessions,
+    listThreads: () => [hiddenThread, structuredClone(sessions.thread)],
+    readThread: (threadId: string) => threadId === hiddenThread.id ? structuredClone(hiddenThread) : sessions.readThread(threadId),
+  };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    appServerClient: appServer,
+    sessionStore: sessionStore as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map((thread) => thread.id), ['thread-1']);
+  } finally {
+    await service.stop();
+  }
+});
+
 test('injects uploaded attachments before submitting an attachment-only turn', async () => {
   const cdp = new FakeCdpClient();
   const sessions = new FakeSessionStore();
@@ -531,6 +561,9 @@ test('publishes official desktop queued messages with text and attachment metada
     const items = (notification?.params as { items?: Array<{ text?: string; attachments?: Array<{ name?: string }> }> })?.items ?? [];
     assert.equal(items[0]?.text, '继续检查这张截图');
     assert.equal(items[0]?.attachments?.[0]?.name, 'screen.png');
+    assert.equal(notifications.some((entry) => entry.method === 'item/completed'
+      && (entry.params as { item?: { id?: string } }).item?.id === 'official-queued-1'), false,
+    'a queued official prompt must not also be broadcast as a completed chat bubble');
   } finally {
     await service.stop();
   }

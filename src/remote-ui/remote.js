@@ -1967,12 +1967,33 @@
     return { threadId, activeTurnId: typeof activeValue === 'string' && activeValue ? activeValue : null, items };
   }
 
+  function queueItemFingerprint(item) {
+    const text = String(item?.text || '').replace(/\s+/g, ' ').trim();
+    const attachments = (Array.isArray(item?.attachments) ? item.attachments : [])
+      .map((attachment) => String(attachment?.name || attachment?.id || '').trim())
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    return `${text}\n${attachments}`;
+  }
+
+  function mergeQueueItems(...groups) {
+    const merged = [];
+    const fingerprints = new Set();
+    for (const item of groups.flat()) {
+      const fingerprint = queueItemFingerprint(item);
+      if (!fingerprint || fingerprints.has(fingerprint)) continue;
+      fingerprints.add(fingerprint);
+      merged.push(item);
+    }
+    return merged;
+  }
+
   function applyQueueSnapshot(value, fallbackThreadId = selectedThreadId) {
     const next = normalizeQueueSnapshot(value, fallbackThreadId);
     if (!next.threadId || next.threadId !== selectedThreadId) return;
-    const pendingItems = [...pendingQueueEntries.values()].filter((item) => item.threadId === next.threadId && !next.items.some((queued) => queued.text === item.text));
-    const externalItems = officialQueueItems.filter((item) => !next.items.some((queued) => queued.id === item.id));
-    queueSnapshot = { ...next, items: [...next.items, ...externalItems, ...pendingItems] };
+    const pendingItems = [...pendingQueueEntries.values()].filter((item) => item.threadId === next.threadId);
+    queueSnapshot = { ...next, items: mergeQueueItems(next.items, officialQueueItems, pendingItems) };
     if (next.activeTurnId) {
       currentTurnId = next.activeTurnId;
       turnStarting = false;
@@ -2524,7 +2545,7 @@
     if (method === 'official/queue/updated') {
       if (params.threadId !== selectedThreadId) return;
       officialQueueItems = Array.isArray(params.items) ? params.items : [];
-      applyQueueSnapshot({ ...queueSnapshot, items: [...queueSnapshot.items.filter((item) => item.source !== 'official'), ...officialQueueItems] });
+      applyQueueSnapshot({ ...queueSnapshot, items: queueSnapshot.items.filter((item) => item.source !== 'official') });
       return;
     }
     if (method === 'queue.error') { handleQueueError(params); return; }

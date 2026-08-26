@@ -272,6 +272,15 @@ test('locks sending before weak-network checks and attaches an idempotency key',
   assert.match(source, /globalThis\.crypto\?\.randomUUID/);
 });
 
+test('deduplicates local and official queue representations by message content and attachments', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  assert.match(source, /function queueItemFingerprint\(item\)/);
+  assert.match(source, /replace\(\/\\s\+\/g, ' '\)\.trim\(\)/);
+  assert.match(source, /function mergeQueueItems\(\.\.\.groups\)/);
+  assert.match(source, /items: mergeQueueItems\(next\.items, officialQueueItems, pendingItems\)/);
+  assert.doesNotMatch(source, /externalItems = officialQueueItems\.filter\(\(item\) => !next\.items\.some\(\(queued\) => queued\.id === item\.id\)\)/);
+});
+
 test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
   const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
   const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');

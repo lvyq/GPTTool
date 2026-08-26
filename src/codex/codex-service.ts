@@ -402,7 +402,14 @@ export class CodexService {
     const threads = await this.#sessions.listThreads(limit);
     const titles = await this.#cachedOfficialTitles();
     const order = new Map(this.#officialThreadOrder.map((id, index) => [id, index]));
-    return threads
+    // When app-server supplied the official list it is the UI source of truth.
+    // The local database can retain archived/hidden/imported rollouts that the
+    // current official client no longer shows; including those made the Web
+    // task drawer visibly differ from the desktop application.
+    const visibleThreads = order.size
+      ? threads.filter((thread) => order.has(thread.id))
+      : threads;
+    return visibleThreads
       .map((thread) => applyOfficialTitle(thread, titles[thread.id]))
       .sort((left, right) => {
         const leftIndex = order.get(left.id);
@@ -698,7 +705,8 @@ export class CodexService {
     for (const user of lastTurn.items.filter((item) => item.type === 'userMessage')) {
       if (previous.userItemIds.has(user.id)) continue;
       previous.userItemIds.add(user.id);
-      if (previous.activeTurnId && currentActiveId === previous.activeTurnId) {
+      const queuedByOfficialClient = Boolean(previous.activeTurnId && currentActiveId === previous.activeTurnId);
+      if (queuedByOfficialClient) {
         previous.officialQueueItemIds.add(user.id);
         this.#emit({
           method: 'official/queue/updated',
@@ -720,7 +728,12 @@ export class CodexService {
           },
         });
       }
-      this.#emit({ method: 'item/completed', params: { threadId: thread.id, turnId: lastTurn.id, item: user } });
+      // A queued prompt is already represented by official/queue/updated.  It
+      // is not part of the active conversation yet, so broadcasting it as a
+      // completed item as well creates a duplicate user bubble in the Web UI.
+      if (!queuedByOfficialClient) {
+        this.#emit({ method: 'item/completed', params: { threadId: thread.id, turnId: lastTurn.id, item: user } });
+      }
     }
     for (const item of lastTurn.items.filter(isProcessItem)) {
       const signature = JSON.stringify(item);
