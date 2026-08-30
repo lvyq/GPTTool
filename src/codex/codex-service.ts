@@ -26,7 +26,7 @@ import {
   type OfficialDirectoryEntry,
   type OfficialAppServerTransport,
 } from './thread-metadata-client.ts';
-import { loadCdpRules } from './cdp-rules.ts';
+import { loadCdpRules, type CdpOperationRules } from './cdp-rules.ts';
 
 export interface CodexServiceOptions {
   executable: string;
@@ -97,8 +97,10 @@ export class CodexService {
   #lastAutoApprovalAt = 0;
   #officialTitles: Record<string, string> = {};
   #officialThreadOrder: string[] = [];
+  #officialThreadListAuthoritative = false;
   #officialTitlesReadAt = 0;
   #officialTitlesRequest?: Promise<Record<string, string>>;
+  #operationRules?: CdpOperationRules;
   #provider: CodexProviderStatus = {
     id: 'openai', name: 'OpenAI', model: '', wireApi: 'responses', mode: 'official',
     external: false, officialUsageApplies: true, message: '正在使用 OpenAI 官方模型服务',
@@ -137,6 +139,7 @@ export class CodexService {
         endpoint: this.options.cdpRulesEndpoint,
         cacheDirectory: this.options.sessionCacheDirectory ? path.join(this.options.sessionCacheDirectory, 'adapter') : undefined,
       });
+      this.#operationRules = rules;
       this.#cdp.setRules?.(rules);
       await this.#cdp.connect();
       this.#cdp.off('disconnect', this.#onDisconnect);
@@ -406,7 +409,7 @@ export class CodexService {
     // The local database can retain archived/hidden/imported rollouts that the
     // current official client no longer shows; including those made the Web
     // task drawer visibly differ from the desktop application.
-    const visibleThreads = order.size
+    const visibleThreads = this.#officialThreadListAuthoritative
       ? threads.filter((thread) => order.has(thread.id))
       : threads;
     return visibleThreads
@@ -441,18 +444,23 @@ export class CodexService {
 
   async #readOfficialTitles(): Promise<Record<string, string>> {
     if (this.#appServer) {
-      const response = await this.#appServer.request<{ data?: Array<{ id?: string; name?: string }> }>(
+      const response = await this.#appServer.request<unknown>(
         'thread/list', { limit: 100 },
       ).catch(() => undefined);
-      if (response?.data?.length) {
-        this.#officialThreadOrder = response.data.flatMap((thread) => thread.id ? [thread.id] : []);
-        return Object.fromEntries(response.data
-          .filter((thread) => thread.id && thread.name)
-          .map((thread) => [thread.id!, thread.name!]));
+      const normalized = normalizeAppServerThreads(response, this.#operationRules?.appServer);
+      if (normalized.recognized) {
+        this.#officialThreadListAuthoritative = true;
+        this.#officialThreadOrder = normalized.threads.map((thread) => thread.id);
+        return Object.fromEntries(normalized.threads
+          .filter((thread) => thread.name)
+          .map((thread) => [thread.id, thread.name]));
       }
     }
-    this.#officialThreadOrder = [];
-    return this.#cdp.threadTitles();
+    const titles = await this.#cdp.threadTitles();
+    const threadIds = Object.keys(titles);
+    this.#officialThreadListAuthoritative = threadIds.length > 0;
+    this.#officialThreadOrder = threadIds;
+    return titles;
   }
 
   async #composerPreferences(): Promise<ComposerPreferences> {
@@ -993,6 +1001,43 @@ function normalizeAppServerModels(value: unknown): Array<{
       isDefault: model?.isDefault === true,
     };
   }).filter((item): item is NonNullable<typeof item> => Boolean(item));
+}
+
+function normalizeAppServerThreads(value: unknown, rules?: CdpOperationRules['appServer']): {
+  recognized: boolean;
+  threads: Array<{ id: string; name: string }>;
+} {
+  const listPaths = rules?.threadListPaths?.length
+    ? rules.threadListPaths
+    : ['', 'data', 'threads', 'result.data', 'result.threads', 'result.items', 'items'];
+  const idFields = rules?.threadIdFields?.length ? rules.threadIdFields : ['id', 'threadId', 'thread_id'];
+  const titleFields = rules?.threadTitleFields?.length ? rules.threadTitleFields : ['name', 'title', 'preview', 'displayName'];
+  const candidates = listPaths.map((candidatePath) => readObjectPath(value, candidatePath));
+  const list = candidates.find(Array.isArray);
+  if (!Array.isArray(list)) return { recognized: false, threads: [] };
+  const seen = new Set<string>();
+  const threads = list.flatMap((entry) => {
+    const thread = asRecord(entry);
+    const id = firstStringField(thread, idFields);
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    const name = firstStringField(thread, titleFields);
+    return [{ id, name }];
+  });
+  return { recognized: true, threads };
+}
+
+function readObjectPath(value: unknown, candidatePath: string): unknown {
+  if (!candidatePath) return value;
+  return candidatePath.split('.').reduce<unknown>((current, segment) => asRecord(current)?.[segment], value);
+}
+
+function firstStringField(record: Record<string, unknown> | undefined, fields: string[]): string {
+  for (const field of fields) {
+    const value = stringValue(readObjectPath(record, field));
+    if (value) return value;
+  }
+  return '';
 }
 
 function normalizeAppServerUsage(value: unknown): AccountUsageInfo | undefined {

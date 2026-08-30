@@ -5056,3 +5056,81 @@ dialog,
     height: 25px;
   }
 }
+
+/* Final mobile geometry guard. Official task titles and restored rich content
+   are untrusted in width, so no child may widen the app canvas. */
+html,
+body,
+.shell,
+main,
+header,
+.messages,
+.composer {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+}
+
+.thread-heading,
+.message,
+.message .content,
+.execution-group,
+.queue-panel,
+.composer-box {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.message pre,
+.message code,
+.message table,
+.code-block {
+  max-width: 100%;
+}
+
+.header-actions {
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.composer {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+@media (max-width: 700px) {
+  header {
+    width: 100%;
+    gap: 7px;
+  }
+
+  .thread-heading {
+    overflow: hidden;
+  }
+
+  .thread-heading h1,
+  .thread-heading p,
+  .header-error {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .header-actions {
+    gap: 3px;
+  }
+
+  .composer {
+    left: 0;
+    right: 0;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+}

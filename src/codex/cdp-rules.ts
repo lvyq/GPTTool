@@ -20,6 +20,14 @@ export interface CdpOperationRules {
     usage: string;
     queued: string[];
   };
+  /** Optional app-server response mappings. Keeping these beside the CDP
+   * selectors lets a cloud rule update adapt both compatibility channels
+   * without requiring a desktop release. */
+  appServer?: {
+    threadListPaths?: string[];
+    threadIdFields?: string[];
+    threadTitleFields?: string[];
+  };
   /** Optional diagnostics emitted by the private rule collector. */
   collector?: {
     capabilities?: Partial<Record<
@@ -86,6 +94,21 @@ export function validateRules(value: unknown, version?: string): CdpOperationRul
   if (selectors.some((item) => typeof item !== 'string' || !item || item.length > 500 || /[{};]|javascript:/i.test(item))) return undefined;
   if (!Array.isArray(rules.labels.queued) || rules.labels.queued.some((item) => typeof item !== 'string' || item.length > 80)) return undefined;
   if (typeof rules.labels.usage !== 'string' || rules.labels.usage.length > 80) return undefined;
+  if (rules.appServer) {
+    const mappings = [
+      { items: rules.appServer.threadListPaths, allowRoot: true },
+      { items: rules.appServer.threadIdFields, allowRoot: false },
+      { items: rules.appServer.threadTitleFields, allowRoot: false },
+    ];
+    if (mappings.some(({ items, allowRoot }) => items !== undefined && (
+      !Array.isArray(items)
+      || items.length > 20
+      || items.some((item) => typeof item !== 'string'
+        || (!allowRoot && !item)
+        || item.length > 120
+        || (item !== '' && !/^[A-Za-z0-9_.-]+$/.test(item)))
+    ))) return undefined;
+  }
   // A collector result is only publishable when it proved that the minimum
   // messaging surface exists. Older, manually-authored rule documents do not
   // contain collector diagnostics and remain backward compatible.

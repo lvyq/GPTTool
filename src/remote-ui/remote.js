@@ -8,6 +8,12 @@
   let reconnectAttempt = 0;
   let threadListRetryTimer;
   let threadListRetryAttempt = 0;
+  const deviceScope = (() => {
+    const match = window.location.pathname.match(/\/device\/([^/]+)/i);
+    return match?.[1] ? decodeURIComponent(match[1]) : window.location.host;
+  })();
+  const recentThreadStorageKey = `gpttool:recent-thread:${deviceScope}`;
+  let initialThreadSelectionDone = false;
   let nextId = 1;
   let selectedThreadId = '';
   let currentTurnId = '';
@@ -100,6 +106,7 @@
   });
 
   bindUi();
+  lockMobileViewport();
   messageResizeObserver?.observe(ui.messages);
   messageMutationObserver.observe(ui.messages, { childList: true, subtree: true });
   connect();
@@ -928,7 +935,7 @@
       clearTimeout(threadListRetryTimer);
       threadListRetryTimer = undefined;
       threadListRetryAttempt = 0;
-      renderThreads(result.data || []);
+      applyThreadList(result.data || [], { autoOpen: true });
     } catch (error) {
       const message = String(error?.message || error || '');
       if (!isRecoverableSessionReadError(message)) {
@@ -946,6 +953,24 @@
       threadListRetryAttempt += 1;
       threadListRetryTimer = setTimeout(() => void loadThreads(), retryDelay);
     }
+  }
+
+  function applyThreadList(threads, options = {}) {
+    const items = Array.isArray(threads) ? threads : [];
+    renderThreads(items);
+    if (!options.autoOpen || initialThreadSelectionDone || selectedThreadId || threadOpening || !connectionOnline || items.length === 0) return;
+    initialThreadSelectionDone = true;
+    const rememberedId = readRecentThreadId();
+    const target = items.find((thread) => thread.id === rememberedId) || items[0];
+    if (target?.id) void selectThread(target.id, { keepFocus: true, automatic: true });
+  }
+
+  function readRecentThreadId() {
+    try { return window.localStorage.getItem(recentThreadStorageKey) || ''; } catch { return ''; }
+  }
+
+  function rememberRecentThreadId(threadId) {
+    try { window.localStorage.setItem(recentThreadStorageKey, String(threadId || '')); } catch { /* private mode */ }
   }
 
   function isRecoverableSessionReadError(message) {
@@ -1367,6 +1392,7 @@
       if (version !== selectionVersion) return;
       const freshSignature = cacheThreadSnapshot(result.thread, result.history);
       selectedThreadId = threadId;
+      rememberRecentThreadId(threadId);
       setThreadOpening(false);
       if (!cachedSnapshot || freshSignature !== cachedSignature) renderThread(result.thread, result.history);
       renderThreads([...threadCache.values()]);
@@ -2550,7 +2576,7 @@
     }
     if (method === 'queue.error') { handleQueueError(params); return; }
     if (method === 'thread/list/updated') {
-      renderThreads(Array.isArray(params?.data) ? params.data : []);
+      applyThreadList(Array.isArray(params?.data) ? params.data : [], { autoOpen: true });
       return;
     }
     if (params.threadId) threadSnapshotCache.delete(params.threadId);
@@ -2936,5 +2962,11 @@
     ui.toast.classList.add('show');
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => ui.toast.classList.remove('show'), 3200);
+  }
+
+  function lockMobileViewport() {
+    for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(eventName, (event) => event.preventDefault(), { passive: false });
+    }
   }
 })();

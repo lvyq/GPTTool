@@ -126,6 +126,7 @@ class FakeAppServerClient {
   closed = false;
   requests: string[] = [];
   calls: Array<{ method: string; params?: unknown }> = [];
+  threadListResponse: unknown = { data: [{ id: 'thread-1', name: 'App Server 标题' }] };
   async connect(): Promise<void> { this.connected = true; }
   async close(): Promise<void> { this.closed = true; }
   respond(): void {}
@@ -137,7 +138,7 @@ class FakeAppServerClient {
   async request<T>(method: string, params?: unknown): Promise<T> {
     this.requests.push(method);
     this.calls.push({ method, params });
-    if (method === 'thread/list') return { data: [{ id: 'thread-1', name: 'App Server 标题' }] } as T;
+    if (method === 'thread/list') return this.threadListResponse as T;
     if (method === 'model/list') return { data: [{
       id: 'gpt-5.6-sol', displayName: '5.6 Sol', isDefault: true,
       supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }],
@@ -353,6 +354,56 @@ test('filters retained local rollouts that are absent from the official app-serv
   try {
     const list = await service.request<{ data: CodexThread[] }>('thread/list');
     assert.deepEqual(list.data.map((thread) => thread.id), ['thread-1']);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('normalizes nested app-server task lists after an official client protocol update', async () => {
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { result: { threads: [{ threadId: 'thread-1', title: '新版官方标题' }] } };
+  const sessions = new FakeSessionStore();
+  const localOnly = { ...structuredClone(sessions.thread), id: 'local-only', name: '旧缓存' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [localOnly, structuredClone(sessions.thread)],
+      readThread: (id: string) => id === localOnly.id ? structuredClone(localOnly) : sessions.readThread(id),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [{ id: 'thread-1', name: '新版官方标题' }]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('uses the visible official CDP task order when app-server returns an unknown shape', async () => {
+  const cdp = new FakeCdpClient();
+  cdp.titles = { 'thread-1': 'CDP 当前标题' };
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { incompatible: true };
+  const sessions = new FakeSessionStore();
+  const localOnly = { ...structuredClone(sessions.thread), id: 'local-only', name: '旧缓存' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [localOnly, structuredClone(sessions.thread)],
+      readThread: (id: string) => id === localOnly.id ? structuredClone(localOnly) : sessions.readThread(id),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [{ id: 'thread-1', name: 'CDP 当前标题' }]);
   } finally {
     await service.stop();
   }

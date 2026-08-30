@@ -59,3 +59,19 @@ test('accepts collector adapters only after the messaging surface is proven', ()
   };
   assert.equal(validateRules(compatible)?.id, 'collector-compatible');
 });
+
+test('accepts declarative app-server mappings and rejects unsafe response paths', () => {
+  const compatible = {
+    ...BUILTIN_CDP_RULES,
+    appServer: {
+      threadListPaths: ['', 'result.payload.threads'],
+      threadIdFields: ['thread.id', 'threadId'],
+      threadTitleFields: ['metadata.title', 'name'],
+    },
+  };
+  assert.deepEqual(validateRules(compatible)?.appServer, compatible.appServer);
+  assert.equal(validateRules({
+    ...compatible,
+    appServer: { ...compatible.appServer, threadListPaths: ['result.constructor()'] },
+  }), undefined);
+});

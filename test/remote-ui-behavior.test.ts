@@ -326,6 +326,21 @@ test('creates a new task only after the user chooses an explicit project directo
   assert.match(stylesheet, /grid-template-rows: auto auto minmax\(0, 1fr\) auto auto/);
 });
 
+test('opens the most recently visited task automatically and locks mobile zoom', async () => {
+  const [markup, source, stylesheet] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+  ]);
+  assert.match(markup, /maximum-scale=1, user-scalable=no, viewport-fit=cover/);
+  assert.match(source, /gpttool:recent-thread:/);
+  assert.match(source, /items\.find\(\(thread\) => thread\.id === rememberedId\) \|\| items\[0\]/);
+  assert.match(source, /rememberRecentThreadId\(threadId\)/);
+  assert.match(source, /gesturestart/);
+  assert.match(stylesheet, /overscroll-behavior-x:\s*none/);
+  assert.match(stylesheet, /grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);
+});
+
 test('renames official task titles without offering project-directory rename', async () => {
   const [markup, source, stylesheet] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
