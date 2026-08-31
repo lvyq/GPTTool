@@ -127,6 +127,7 @@ class FakeAppServerClient {
   requests: string[] = [];
   calls: Array<{ method: string; params?: unknown }> = [];
   threadListResponse: unknown = { data: [{ id: 'thread-1', name: 'App Server 标题' }] };
+  threadListPages?: Record<string, unknown>;
   async connect(): Promise<void> { this.connected = true; }
   async close(): Promise<void> { this.closed = true; }
   respond(): void {}
@@ -138,7 +139,10 @@ class FakeAppServerClient {
   async request<T>(method: string, params?: unknown): Promise<T> {
     this.requests.push(method);
     this.calls.push({ method, params });
-    if (method === 'thread/list') return this.threadListResponse as T;
+    if (method === 'thread/list') {
+      const cursor = String((params as { cursor?: string } | undefined)?.cursor ?? '');
+      return (this.threadListPages?.[cursor] ?? this.threadListResponse) as T;
+    }
     if (method === 'model/list') return { data: [{
       id: 'gpt-5.6-sol', displayName: '5.6 Sol', isDefault: true,
       supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }],
@@ -383,7 +387,7 @@ test('normalizes nested app-server task lists after an official client protocol 
   }
 });
 
-test('uses the visible official CDP task order when app-server returns an unknown shape', async () => {
+test('uses visible CDP titles only as enrichment and never filters its virtualized subset', async () => {
   const cdp = new FakeCdpClient();
   cdp.titles = { 'thread-1': 'CDP 当前标题' };
   const appServer = new FakeAppServerClient();
@@ -403,7 +407,60 @@ test('uses the visible official CDP task order when app-server returns an unknow
   await service.start();
   try {
     const list = await service.request<{ data: CodexThread[] }>('thread/list');
-    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [{ id: 'thread-1', name: 'CDP 当前标题' }]);
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
+      { id: 'local-only', name: '旧缓存' },
+      { id: 'thread-1', name: 'CDP 当前标题' },
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('reads every app-server cursor page and builds the list from official task identities', async () => {
+  const appServer = new FakeAppServerClient();
+  appServer.threadListPages = {
+    '': { data: [{ id: 'official-new', name: '最新官方任务', cwd: '/new', updatedAt: 200 }], nextCursor: 'page-2' },
+    'page-2': { data: [{ id: 'thread-1', name: '第二页官方任务', cwd: '/project', updatedAt: 100 }] },
+  };
+  const sessions = new FakeSessionStore();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: sessions as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
+      { id: 'official-new', name: '最新官方任务' },
+      { id: 'thread-1', name: '第二页官方任务' },
+    ]);
+    assert.deepEqual(appServer.calls.filter(({ method }) => method === 'thread/list').map(({ params }) => params), [
+      { limit: 100 },
+      { limit: 100, cursor: 'page-2' },
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('keeps the last complete official snapshot during a transient empty response', async () => {
+  const appServer = new FakeAppServerClient();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: new FakeSessionStore() as never,
+  });
+  await service.start();
+  try {
+    const first = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.equal(first.data[0]?.id, 'thread-1');
+    appServer.threadListResponse = { data: [] };
+    await new Promise((resolve) => setTimeout(resolve, 5_050));
+    const second = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.equal(second.data[0]?.id, 'thread-1');
   } finally {
     await service.stop();
   }

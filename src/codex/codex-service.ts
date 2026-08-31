@@ -73,6 +73,16 @@ interface CodexAttachment {
 
 type TurnMode = 'normal' | 'plan' | 'goal';
 
+interface OfficialThreadSummary {
+  id: string;
+  name: string;
+  preview: string;
+  cwd: string;
+  createdAt: number;
+  updatedAt: number;
+  status: CodexThread['status'];
+}
+
 /**
  * Controls the official ChatGPT/Codex renderer through Chrome DevTools Protocol.
  * Conversation history is read from Codex's local read-only state database so
@@ -96,6 +106,7 @@ export class CodexService {
   #autoApprove = false;
   #lastAutoApprovalAt = 0;
   #officialTitles: Record<string, string> = {};
+  #officialThreads: OfficialThreadSummary[] = [];
   #officialThreadOrder: string[] = [];
   #officialThreadListAuthoritative = false;
   #officialTitlesReadAt = 0;
@@ -402,16 +413,30 @@ export class CodexService {
   }
 
   async #threadsWithOfficialTitles(limit: number): Promise<CodexThread[]> {
-    const threads = await this.#sessions.listThreads(limit);
     const titles = await this.#cachedOfficialTitles();
+    const threads = await this.#sessions.listThreads(Math.max(limit, Math.min(200, limit * 3)));
     const order = new Map(this.#officialThreadOrder.map((id, index) => [id, index]));
     // When app-server supplied the official list it is the UI source of truth.
     // The local database can retain archived/hidden/imported rollouts that the
     // current official client no longer shows; including those made the Web
     // task drawer visibly differ from the desktop application.
-    const visibleThreads = this.#officialThreadListAuthoritative
-      ? threads.filter((thread) => order.has(thread.id))
-      : threads;
+    if (this.#officialThreadListAuthoritative) {
+      const localById = new Map(threads.map((thread) => [thread.id, thread]));
+      return this.#officialThreads.slice(0, limit).map((official) => {
+        const local = localById.get(official.id);
+        if (local) return applyOfficialTitle(local, official.name || titles[official.id]);
+        return {
+          id: official.id,
+          name: official.name || '未命名任务',
+          preview: official.preview || official.name || '未命名任务',
+          cwd: official.cwd,
+          createdAt: official.createdAt,
+          updatedAt: official.updatedAt,
+          status: official.status,
+        } satisfies CodexThread;
+      });
+    }
+    const visibleThreads = threads;
     return visibleThreads
       .map((thread) => applyOfficialTitle(thread, titles[thread.id]))
       .sort((left, right) => {
@@ -444,23 +469,43 @@ export class CodexService {
 
   async #readOfficialTitles(): Promise<Record<string, string>> {
     if (this.#appServer) {
-      const response = await this.#appServer.request<unknown>(
-        'thread/list', { limit: 100 },
-      ).catch(() => undefined);
-      const normalized = normalizeAppServerThreads(response, this.#operationRules?.appServer);
-      if (normalized.recognized) {
+      const collected: OfficialThreadSummary[] = [];
+      const seen = new Set<string>();
+      let cursor = '';
+      let recognized = false;
+      for (let page = 0; page < 20; page += 1) {
+        const response = await this.#appServer.request<unknown>(
+          'thread/list', cursor ? { limit: 100, cursor } : { limit: 100 },
+        ).catch(() => undefined);
+        const normalized = normalizeAppServerThreads(response, this.#operationRules?.appServer);
+        if (!normalized.recognized) break;
+        recognized = true;
+        for (const thread of normalized.threads) {
+          if (seen.has(thread.id)) continue;
+          seen.add(thread.id);
+          collected.push(thread);
+        }
+        if (!normalized.nextCursor || normalized.nextCursor === cursor) break;
+        cursor = normalized.nextCursor;
+      }
+      // Never let a transient empty/partial response erase a known-good task
+      // snapshot. The official app-server occasionally returns an empty first
+      // page while its state database is being reopened after an update.
+      if (recognized && (collected.length > 0 || this.#officialThreads.length === 0)) {
         this.#officialThreadListAuthoritative = true;
-        this.#officialThreadOrder = normalized.threads.map((thread) => thread.id);
-        return Object.fromEntries(normalized.threads
+        this.#officialThreads = collected;
+        this.#officialThreadOrder = collected.map((thread) => thread.id);
+        return Object.fromEntries(collected
           .filter((thread) => thread.name)
           .map((thread) => [thread.id, thread.name]));
       }
+      if (this.#officialThreadListAuthoritative && this.#officialThreads.length) return this.#officialTitles;
     }
     const titles = await this.#cdp.threadTitles();
-    const threadIds = Object.keys(titles);
-    this.#officialThreadListAuthoritative = threadIds.length > 0;
-    this.#officialThreadOrder = threadIds;
-    return titles;
+    // The official sidebar is virtualized and exposes only the rows around the
+    // current scroll position. It can enrich titles, but must never filter or
+    // reorder the complete app-server/local task list.
+    return { ...this.#officialTitles, ...titles };
   }
 
   async #composerPreferences(): Promise<ComposerPreferences> {
@@ -1005,7 +1050,8 @@ function normalizeAppServerModels(value: unknown): Array<{
 
 function normalizeAppServerThreads(value: unknown, rules?: CdpOperationRules['appServer']): {
   recognized: boolean;
-  threads: Array<{ id: string; name: string }>;
+  threads: OfficialThreadSummary[];
+  nextCursor: string;
 } {
   const listPaths = rules?.threadListPaths?.length
     ? rules.threadListPaths
@@ -1014,7 +1060,7 @@ function normalizeAppServerThreads(value: unknown, rules?: CdpOperationRules['ap
   const titleFields = rules?.threadTitleFields?.length ? rules.threadTitleFields : ['name', 'title', 'preview', 'displayName'];
   const candidates = listPaths.map((candidatePath) => readObjectPath(value, candidatePath));
   const list = candidates.find(Array.isArray);
-  if (!Array.isArray(list)) return { recognized: false, threads: [] };
+  if (!Array.isArray(list)) return { recognized: false, threads: [], nextCursor: '' };
   const seen = new Set<string>();
   const threads = list.flatMap((entry) => {
     const thread = asRecord(entry);
@@ -1022,9 +1068,27 @@ function normalizeAppServerThreads(value: unknown, rules?: CdpOperationRules['ap
     if (!id || seen.has(id)) return [];
     seen.add(id);
     const name = firstStringField(thread, titleFields);
-    return [{ id, name }];
+    const status = asRecord(thread?.status);
+    const statusType = stringValue(status?.type);
+    return [{
+      id,
+      name,
+      preview: stringValue(thread?.preview) || name,
+      cwd: stringValue(thread?.cwd),
+      createdAt: normalizeOfficialEpoch(thread?.createdAt ?? thread?.created_at ?? thread?.createdAtMs),
+      updatedAt: normalizeOfficialEpoch(thread?.recencyAt ?? thread?.updatedAt ?? thread?.updated_at ?? thread?.updatedAtMs),
+      status: statusType === 'active' || statusType === 'inProgress'
+        ? { type: 'active' as const }
+        : { type: 'idle' as const },
+    }];
   });
-  return { recognized: true, threads };
+  const root = asRecord(value);
+  return { recognized: true, threads, nextCursor: stringValue(root?.nextCursor ?? root?.next_cursor) };
+}
+
+function normalizeOfficialEpoch(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return Date.now();
+  return value < 10_000_000_000 ? value * 1_000 : value;
 }
 
 function readObjectPath(value: unknown, candidatePath: string): unknown {
