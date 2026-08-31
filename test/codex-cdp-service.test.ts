@@ -125,6 +125,9 @@ class FakeAppServerClient {
   connected = false;
   closed = false;
   requests: string[] = [];
+  calls: Array<{ method: string; params?: unknown }> = [];
+  threadListResponse: unknown = { data: [{ id: 'thread-1', name: 'App Server 标题' }] };
+  threadListPages?: Record<string, unknown>;
   async connect(): Promise<void> { this.connected = true; }
   async close(): Promise<void> { this.closed = true; }
   respond(): void {}
@@ -133,9 +136,13 @@ class FakeAppServerClient {
   async probe(): Promise<{ initialized: true; threads: true; models: true; usage: true; directories: true }> {
     return { initialized: true, threads: true, models: true, usage: true, directories: true };
   }
-  async request<T>(method: string): Promise<T> {
+  async request<T>(method: string, params?: unknown): Promise<T> {
     this.requests.push(method);
-    if (method === 'thread/list') return { data: [{ id: 'thread-1', name: 'App Server 标题' }] } as T;
+    this.calls.push({ method, params });
+    if (method === 'thread/list') {
+      const cursor = String((params as { cursor?: string } | undefined)?.cursor ?? '');
+      return (this.threadListPages?.[cursor] ?? this.threadListResponse) as T;
+    }
     if (method === 'model/list') return { data: [{
       id: 'gpt-5.6-sol', displayName: '5.6 Sol', isDefault: true,
       supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }],
@@ -144,6 +151,7 @@ class FakeAppServerClient {
     if (method === 'account/rateLimits/read') return { rateLimits: { primary: {
       usedPercent: 12, windowDurationMins: 10_080, resetsAt: 1_900_000_000,
     } } } as T;
+    if (method === 'turn/start') return { turn: { id: 'app-server-turn' } } as T;
     return {} as T;
   }
 }
@@ -325,6 +333,139 @@ test('reads titles, model capabilities and quota from app-server while keeping C
   }
 });
 
+test('filters retained local rollouts that are absent from the official app-server task list', async () => {
+  const cdp = new FakeCdpClient();
+  const appServer = new FakeAppServerClient();
+  const sessions = new FakeSessionStore();
+  const hiddenThread: CodexThread = {
+    ...structuredClone(sessions.thread),
+    id: 'local-only-thread',
+    name: '仅本地残留任务',
+    updatedAt: sessions.thread.updatedAt + 10_000,
+  };
+  const sessionStore = {
+    ...sessions,
+    listThreads: () => [hiddenThread, structuredClone(sessions.thread)],
+    readThread: (threadId: string) => threadId === hiddenThread.id ? structuredClone(hiddenThread) : sessions.readThread(threadId),
+  };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    appServerClient: appServer,
+    sessionStore: sessionStore as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map((thread) => thread.id), ['thread-1']);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('normalizes nested app-server task lists after an official client protocol update', async () => {
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { result: { threads: [{ threadId: 'thread-1', title: '新版官方标题' }] } };
+  const sessions = new FakeSessionStore();
+  const localOnly = { ...structuredClone(sessions.thread), id: 'local-only', name: '旧缓存' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [localOnly, structuredClone(sessions.thread)],
+      readThread: (id: string) => id === localOnly.id ? structuredClone(localOnly) : sessions.readThread(id),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [{ id: 'thread-1', name: '新版官方标题' }]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('uses visible CDP titles only as enrichment and never filters its virtualized subset', async () => {
+  const cdp = new FakeCdpClient();
+  cdp.titles = { 'thread-1': 'CDP 当前标题' };
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { incompatible: true };
+  const sessions = new FakeSessionStore();
+  const localOnly = { ...structuredClone(sessions.thread), id: 'local-only', name: '旧缓存' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [localOnly, structuredClone(sessions.thread)],
+      readThread: (id: string) => id === localOnly.id ? structuredClone(localOnly) : sessions.readThread(id),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
+      { id: 'local-only', name: '旧缓存' },
+      { id: 'thread-1', name: 'CDP 当前标题' },
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('reads every app-server cursor page and builds the list from official task identities', async () => {
+  const appServer = new FakeAppServerClient();
+  appServer.threadListPages = {
+    '': { data: [{ id: 'official-new', name: '最新官方任务', cwd: '/new', updatedAt: 200 }], nextCursor: 'page-2' },
+    'page-2': { data: [{ id: 'thread-1', name: '第二页官方任务', cwd: '/project', updatedAt: 100 }] },
+  };
+  const sessions = new FakeSessionStore();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: sessions as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
+      { id: 'official-new', name: '最新官方任务' },
+      { id: 'thread-1', name: '第二页官方任务' },
+    ]);
+    assert.deepEqual(appServer.calls.filter(({ method }) => method === 'thread/list').map(({ params }) => params), [
+      { limit: 100 },
+      { limit: 100, cursor: 'page-2' },
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('keeps the last complete official snapshot during a transient empty response', async () => {
+  const appServer = new FakeAppServerClient();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: new FakeSessionStore() as never,
+  });
+  await service.start();
+  try {
+    const first = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.equal(first.data[0]?.id, 'thread-1');
+    appServer.threadListResponse = { data: [] };
+    await new Promise((resolve) => setTimeout(resolve, 5_050));
+    const second = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.equal(second.data[0]?.id, 'thread-1');
+  } finally {
+    await service.stop();
+  }
+});
+
 test('injects uploaded attachments before submitting an attachment-only turn', async () => {
   const cdp = new FakeCdpClient();
   const sessions = new FakeSessionStore();
@@ -350,6 +491,41 @@ test('injects uploaded attachments before submitting an attachment-only turn', a
     assert.deepEqual(cdp.attachedFiles, [['/private/tmp/remote-image.png']]);
     assert.deepEqual(cdp.preparedModes, ['goal']);
     assert.deepEqual(cdp.submitted, ['']);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('falls back to app-server before submission when the updated official renderer is unavailable', async () => {
+  const cdp = new FakeCdpClient();
+  cdp.failComposerWaits = 1;
+  const appServer = new FakeAppServerClient();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    sessionStore: new FakeSessionStore() as never,
+    appServerClient: appServer as never,
+    navigate: async () => undefined,
+  });
+  await service.start();
+  try {
+    const result = await service.request<{ threadId: string; turn: { id: string } }>('turn/start', {
+      threadId: 'thread-1',
+      input: [{ type: 'text', text: 'send through safe fallback' }],
+      attachments: [{ path: '/private/tmp/report.md', name: 'report.md', mimeType: 'text/markdown' }],
+    });
+    assert.equal(result.threadId, 'thread-1');
+    assert.equal(result.turn.id, 'app-server-turn');
+    assert.deepEqual(cdp.submitted, [], 'must not retry an ambiguous renderer submit');
+    const start = appServer.calls.find((call) => call.method === 'turn/start');
+    assert.deepEqual(start?.params, {
+      threadId: 'thread-1',
+      input: [
+        { type: 'text', text: 'send through safe fallback' },
+        { type: 'mention', name: 'report.md', path: '/private/tmp/report.md' },
+      ],
+      mode: 'normal',
+    });
   } finally {
     await service.stop();
   }
@@ -493,6 +669,9 @@ test('publishes official desktop queued messages with text and attachment metada
     const items = (notification?.params as { items?: Array<{ text?: string; attachments?: Array<{ name?: string }> }> })?.items ?? [];
     assert.equal(items[0]?.text, '继续检查这张截图');
     assert.equal(items[0]?.attachments?.[0]?.name, 'screen.png');
+    assert.equal(notifications.some((entry) => entry.method === 'item/completed'
+      && (entry.params as { item?: { id?: string } }).item?.id === 'official-queued-1'), false,
+    'a queued official prompt must not also be broadcast as a completed chat bubble');
   } finally {
     await service.stop();
   }

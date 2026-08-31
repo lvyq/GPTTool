@@ -2,7 +2,10 @@ import { spawn } from 'node:child_process';
 import './build-web-ui.mjs';
 
 const host = requiredEnv('GPTTOOL_WEB_DEPLOY_HOST');
-const destination = process.env.GPTTOOL_WEB_DEPLOY_DIR || '/opt/gpttool-relay/public/';
+// Keep the default aligned with the production systemd service.  The former
+// /opt/gpttool-relay path was not served by nginx, so a successful deployment
+// could silently leave the public Web UI on an old build.
+const destination = process.env.GPTTOOL_WEB_DEPLOY_DIR || '/opt/astergate-relay/public/';
 
 await run('ssh', [host, `mkdir -p ${shellQuote(destination)} && chown astergate:astergate ${shellQuote(destination)}`]);
 await run('rsync', ['-az', '--delete', 'deploy/relay-server/public/', `${host}:${destination}`]);

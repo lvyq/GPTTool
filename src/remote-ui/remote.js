@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
+  const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showModel', 'modelBadge', 'modelPopover', 'modelDetail', 'modelEffortDetail', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
   const ui = Object.fromEntries(ids.map((id) => [id, $(id)]));
   const shell = document.querySelector('.shell');
   let socket;
@@ -8,6 +8,12 @@
   let reconnectAttempt = 0;
   let threadListRetryTimer;
   let threadListRetryAttempt = 0;
+  const deviceScope = (() => {
+    const match = window.location.pathname.match(/\/device\/([^/]+)/i);
+    return match?.[1] ? decodeURIComponent(match[1]) : window.location.host;
+  })();
+  const recentThreadStorageKey = `gpttool:recent-thread:${deviceScope}`;
+  let initialThreadSelectionDone = false;
   let nextId = 1;
   let selectedThreadId = '';
   let currentTurnId = '';
@@ -71,6 +77,7 @@
   let intelligenceSnapshot;
   let intelligenceDirty = false;
   let intelligenceRevision = 0;
+  let modelLoadedAt = 0;
   let voiceRecognition;
   let voiceRecognitionConstructor;
   let voiceRecognitionStarted = false;
@@ -99,6 +106,7 @@
   });
 
   bindUi();
+  lockMobileViewport();
   messageResizeObserver?.observe(ui.messages);
   messageMutationObserver.observe(ui.messages, { childList: true, subtree: true });
   connect();
@@ -148,6 +156,7 @@
       renderComposerInputMode();
     }
     ui.showTaskSettings.addEventListener('click', showTaskSettings);
+    ui.showModel.addEventListener('click', toggleModelPopover);
     ui.showUsage.addEventListener('click', toggleUsagePopover);
     ui.closeTaskSettings.addEventListener('click', () => ui.taskSettingsDialog.close());
     ui.taskSettingsDialog.addEventListener('click', (event) => { if (event.target === ui.taskSettingsDialog) ui.taskSettingsDialog.close(); });
@@ -179,6 +188,9 @@
     });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDrawer(); });
     document.addEventListener('pointerdown', (event) => {
+      if (!ui.modelPopover.classList.contains('hidden') && !ui.modelPopover.contains(event.target) && !ui.showModel.contains(event.target)) {
+        setModelPopover(false);
+      }
       if (!ui.usagePopover.classList.contains('hidden') && !ui.usagePopover.contains(event.target) && !ui.showUsage.contains(event.target)) {
         setUsagePopover(false);
       }
@@ -484,6 +496,7 @@
       reconnectAttempt = 0;
       setConnection(true, '已连接本机 Codex'); loadThreads();
       void loadAutoApproval();
+      void loadModelSummary(true);
       void loadUsage(true);
       void loadCompatibility();
       const threadId = retryThreadId; retryThreadId = '';
@@ -579,6 +592,33 @@
     ui.taskSettingsDialog.showModal();
     intelligenceDirty = false;
     await Promise.all([loadAutoApproval(), loadIntelligenceSettings()]);
+  }
+
+  function toggleModelPopover() {
+    const opening = ui.modelPopover.classList.contains('hidden');
+    setModelPopover(opening);
+    if (opening && Date.now() - modelLoadedAt > 120_000) void loadModelSummary(true);
+  }
+
+  function setModelPopover(open) {
+    ui.modelPopover.classList.toggle('hidden', !open);
+    ui.showModel.setAttribute('aria-expanded', String(open));
+  }
+
+  async function loadModelSummary(force = false) {
+    if (!force && Date.now() - modelLoadedAt < 120_000) return intelligenceSnapshot;
+    try {
+      const result = await rpc('composer.preferences.get');
+      applyIntelligenceSnapshot(result);
+      return result;
+    } catch (error) {
+      if (!modelLoadedAt) {
+        ui.modelBadge.textContent = '--';
+        ui.modelDetail.textContent = '暂时无法读取当前模型';
+        ui.modelEffortDetail.textContent = error.message;
+      }
+      return undefined;
+    }
   }
 
   async function loadIntelligenceSettings() {
@@ -801,7 +841,9 @@
   }
 
   function applyIntelligenceSnapshot(result, forceRender = false) {
-    if (!result || !Array.isArray(result.models)) return;
+    if (!result) return;
+    applyModelSummary(result);
+    if (!Array.isArray(result.models)) return;
     intelligenceSnapshot = result;
     intelligenceModels = normalizeModelOptions(result);
     if (!ui.taskSettingsDialog.open || (intelligenceDirty && !forceRender)) return;
@@ -818,6 +860,25 @@
       ? result.message || `当前由 ${result.provider?.name || '第三方服务'} 管理模型设置`
       : `当前：${result.model || '默认模型'} · ${result.effortLabel || result.effort || '默认强度'}`;
     ui.saveIntelligence.disabled = result.readOnly || !ui.effortSelect.options.length;
+  }
+
+  function applyModelSummary(result) {
+    const model = String(result.model || '').trim();
+    if (!model) return;
+    modelLoadedAt = Date.now();
+    const normalized = model.replace(/^gpt[-\s]*/i, '').trim();
+    const parts = normalized.split(/[-\s]+/).filter(Boolean);
+    const family = parts.at(-1) || normalized;
+    const compact = /^(sol|terra|luna)$/i.test(family) ? family : normalized;
+    ui.modelBadge.textContent = compact.slice(0, 5);
+    ui.modelBadge.classList.toggle('long', compact.length > 3);
+    ui.showModel.title = `当前模型：${model}`;
+    ui.modelDetail.textContent = `当前模型：${model}`;
+    const effort = result.effortLabel || result.effort || '默认强度';
+    ui.modelEffortDetail.textContent = `${effort}${result.cached ? ' · 缓存，正在后台同步' : ' · 已与本机设置同步'}`;
+    if (result.synchronized === false) {
+      ui.modelEffortDetail.textContent = `${effort} · app-server 默认值，官方界面暂不可读`;
+    }
   }
 
   function renderDiscreteSlider(select, slider, valueLabel, ticks) {
@@ -874,7 +935,7 @@
       clearTimeout(threadListRetryTimer);
       threadListRetryTimer = undefined;
       threadListRetryAttempt = 0;
-      renderThreads(result.data || []);
+      applyThreadList(result.data || [], { autoOpen: true });
     } catch (error) {
       const message = String(error?.message || error || '');
       if (!isRecoverableSessionReadError(message)) {
@@ -892,6 +953,24 @@
       threadListRetryAttempt += 1;
       threadListRetryTimer = setTimeout(() => void loadThreads(), retryDelay);
     }
+  }
+
+  function applyThreadList(threads, options = {}) {
+    const items = Array.isArray(threads) ? threads : [];
+    renderThreads(items);
+    if (!options.autoOpen || initialThreadSelectionDone || selectedThreadId || threadOpening || !connectionOnline || items.length === 0) return;
+    initialThreadSelectionDone = true;
+    const rememberedId = readRecentThreadId();
+    const target = items.find((thread) => thread.id === rememberedId) || items[0];
+    if (target?.id) void selectThread(target.id, { keepFocus: true, automatic: true });
+  }
+
+  function readRecentThreadId() {
+    try { return window.localStorage.getItem(recentThreadStorageKey) || ''; } catch { return ''; }
+  }
+
+  function rememberRecentThreadId(threadId) {
+    try { window.localStorage.setItem(recentThreadStorageKey, String(threadId || '')); } catch { /* private mode */ }
   }
 
   function isRecoverableSessionReadError(message) {
@@ -1313,6 +1392,7 @@
       if (version !== selectionVersion) return;
       const freshSignature = cacheThreadSnapshot(result.thread, result.history);
       selectedThreadId = threadId;
+      rememberRecentThreadId(threadId);
       setThreadOpening(false);
       if (!cachedSnapshot || freshSignature !== cachedSignature) renderThread(result.thread, result.history);
       renderThreads([...threadCache.values()]);
@@ -1913,12 +1993,33 @@
     return { threadId, activeTurnId: typeof activeValue === 'string' && activeValue ? activeValue : null, items };
   }
 
+  function queueItemFingerprint(item) {
+    const text = String(item?.text || '').replace(/\s+/g, ' ').trim();
+    const attachments = (Array.isArray(item?.attachments) ? item.attachments : [])
+      .map((attachment) => String(attachment?.name || attachment?.id || '').trim())
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    return `${text}\n${attachments}`;
+  }
+
+  function mergeQueueItems(...groups) {
+    const merged = [];
+    const fingerprints = new Set();
+    for (const item of groups.flat()) {
+      const fingerprint = queueItemFingerprint(item);
+      if (!fingerprint || fingerprints.has(fingerprint)) continue;
+      fingerprints.add(fingerprint);
+      merged.push(item);
+    }
+    return merged;
+  }
+
   function applyQueueSnapshot(value, fallbackThreadId = selectedThreadId) {
     const next = normalizeQueueSnapshot(value, fallbackThreadId);
     if (!next.threadId || next.threadId !== selectedThreadId) return;
-    const pendingItems = [...pendingQueueEntries.values()].filter((item) => item.threadId === next.threadId && !next.items.some((queued) => queued.text === item.text));
-    const externalItems = officialQueueItems.filter((item) => !next.items.some((queued) => queued.id === item.id));
-    queueSnapshot = { ...next, items: [...next.items, ...externalItems, ...pendingItems] };
+    const pendingItems = [...pendingQueueEntries.values()].filter((item) => item.threadId === next.threadId);
+    queueSnapshot = { ...next, items: mergeQueueItems(next.items, officialQueueItems, pendingItems) };
     if (next.activeTurnId) {
       currentTurnId = next.activeTurnId;
       turnStarting = false;
@@ -2470,12 +2571,12 @@
     if (method === 'official/queue/updated') {
       if (params.threadId !== selectedThreadId) return;
       officialQueueItems = Array.isArray(params.items) ? params.items : [];
-      applyQueueSnapshot({ ...queueSnapshot, items: [...queueSnapshot.items.filter((item) => item.source !== 'official'), ...officialQueueItems] });
+      applyQueueSnapshot({ ...queueSnapshot, items: queueSnapshot.items.filter((item) => item.source !== 'official') });
       return;
     }
     if (method === 'queue.error') { handleQueueError(params); return; }
     if (method === 'thread/list/updated') {
-      renderThreads(Array.isArray(params?.data) ? params.data : []);
+      applyThreadList(Array.isArray(params?.data) ? params.data : [], { autoOpen: true });
       return;
     }
     if (params.threadId) threadSnapshotCache.delete(params.threadId);
@@ -2861,5 +2962,11 @@
     ui.toast.classList.add('show');
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => ui.toast.classList.remove('show'), 3200);
+  }
+
+  function lockMobileViewport() {
+    for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(eventName, (event) => event.preventDefault(), { passive: false });
+    }
   }
 })();

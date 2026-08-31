@@ -112,6 +112,19 @@ test('renders remaining usage as a compact green and white ring without a percen
   assert.match(stylesheet, /\.usage-ring > span/);
 });
 
+test('shows the current official model beside remaining usage and updates it from live preferences', async () => {
+  const [markup, source, stylesheet] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+  ]);
+  assert.match(markup, /id="showModel"[\s\S]*id="modelBadge"/);
+  assert.match(source, /preferences\.updated[\s\S]*applyIntelligenceSnapshot/);
+  assert.match(source, /function applyModelSummary\(result\)/);
+  assert.match(source, /loadModelSummary\(true\)/);
+  assert.match(stylesheet, /\.model-badge/);
+});
+
 test('formats ISO quota reset timestamps in the browser local timezone', async () => {
   const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
 
@@ -259,6 +272,15 @@ test('locks sending before weak-network checks and attaches an idempotency key',
   assert.match(source, /globalThis\.crypto\?\.randomUUID/);
 });
 
+test('deduplicates local and official queue representations by message content and attachments', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  assert.match(source, /function queueItemFingerprint\(item\)/);
+  assert.match(source, /replace\(\/\\s\+\/g, ' '\)\.trim\(\)/);
+  assert.match(source, /function mergeQueueItems\(\.\.\.groups\)/);
+  assert.match(source, /items: mergeQueueItems\(next\.items, officialQueueItems, pendingItems\)/);
+  assert.doesNotMatch(source, /externalItems = officialQueueItems\.filter\(\(item\) => !next\.items\.some\(\(queued\) => queued\.id === item\.id\)\)/);
+});
+
 test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
   const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
   const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');
@@ -302,6 +324,21 @@ test('creates a new task only after the user chooses an explicit project directo
   assert.match(stylesheet, /\.project-directory-browse/);
   assert.match(stylesheet, /\.directory-browser-list/);
   assert.match(stylesheet, /grid-template-rows: auto auto minmax\(0, 1fr\) auto auto/);
+});
+
+test('opens the most recently visited task automatically and locks mobile zoom', async () => {
+  const [markup, source, stylesheet] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+  ]);
+  assert.match(markup, /maximum-scale=1, user-scalable=no, viewport-fit=cover/);
+  assert.match(source, /gpttool:recent-thread:/);
+  assert.match(source, /items\.find\(\(thread\) => thread\.id === rememberedId\) \|\| items\[0\]/);
+  assert.match(source, /rememberRecentThreadId\(threadId\)/);
+  assert.match(source, /gesturestart/);
+  assert.match(stylesheet, /overscroll-behavior-x:\s*none/);
+  assert.match(stylesheet, /grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/);
 });
 
 test('renames official task titles without offering project-directory rename', async () => {

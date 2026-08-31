@@ -37,6 +37,7 @@ body {
   min-height: 100%;
   margin: 0;
   overflow: hidden;
+  touch-action: pan-x pan-y;
   background: var(--sidebar);
 }
 
@@ -642,6 +643,32 @@ header p {
   overflow: hidden;
   color: var(--muted);
 }
+
+.model-summary-button {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(65, 223, 145, .28);
+  background: #101110;
+}
+
+.model-badge {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #41df91;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.02em;
+  text-transform: capitalize;
+}
+
+.model-badge.long { font-size: 6.5px; }
+.model-popover { right: 78px; }
+.model-popover::before { right: 18px; }
 
 .usage-summary-button::before {
   content: none;
@@ -4976,3 +5003,134 @@ dialog,
   margin-right: 8px;
 }
 @keyframes thread-running-spin { to { transform: rotate(360deg); } }
+
+/* Keep the current-model and quota controls visible as a stable pair on
+   narrow iPhone headers.  Older layouts allowed the first action to shrink
+   out of view when a long task title was restored from history. */
+.header-actions {
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+}
+
+.thread-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.model-summary-button {
+  display: grid !important;
+  flex: 0 0 36px;
+  width: 36px;
+  min-width: 36px;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.model-badge {
+  flex: none;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .thread-heading h1,
+  .thread-heading p,
+  .header-error {
+    max-width: calc(100vw - 188px);
+  }
+
+  .model-summary-button,
+  .usage-summary-button,
+  .task-settings-button {
+    flex: 0 0 31px;
+    width: 31px;
+    min-width: 31px;
+    height: 31px;
+  }
+
+  .model-badge,
+  .usage-ring {
+    width: 25px;
+    height: 25px;
+  }
+}
+
+/* Final mobile geometry guard. Official task titles and restored rich content
+   are untrusted in width, so no child may widen the app canvas. */
+html,
+body,
+.shell,
+main,
+header,
+.messages,
+.composer {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+}
+
+.thread-heading,
+.message,
+.message .content,
+.execution-group,
+.queue-panel,
+.composer-box {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.message pre,
+.message code,
+.message table,
+.code-block {
+  max-width: 100%;
+}
+
+.header-actions {
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.composer {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+@media (max-width: 700px) {
+  header {
+    width: 100%;
+    gap: 7px;
+  }
+
+  .thread-heading {
+    overflow: hidden;
+  }
+
+  .thread-heading h1,
+  .thread-heading p,
+  .header-error {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .header-actions {
+    gap: 3px;
+  }
+
+  .composer {
+    left: 0;
+    right: 0;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+}

@@ -2,7 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <meta name="theme-color" content="#070807" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -10,7 +13,7 @@
     <title>GPTTool Remote Codex</title>
     <link rel="icon" href="gpttool-logo.png?v=20260726-fullbleed" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260726-fullbleed" />
-    <link rel="stylesheet" href="remote.css?v=20260803-picker" />
+    <link rel="stylesheet" href="remote.css?v=20260825-sync-fix" />
   </head>
   <body>
     <div class="shell">
@@ -32,6 +35,11 @@
             <p id="composerError" class="header-error" role="alert"></p>
           </div>
           <div class="header-actions">
+            <button id="showModel" type="button" class="header-icon-button model-summary-button" aria-label="查看当前模型" title="正在读取当前模型" aria-expanded="false"><span id="modelBadge" class="model-badge" aria-hidden="true">--</span></button>
+            <div id="modelPopover" class="usage-popover model-popover hidden" role="status">
+              <strong id="modelDetail">正在读取当前模型…</strong>
+              <small id="modelEffortDetail">设置与本机官方客户端同步</small>
+            </div>
             <button id="showUsage" type="button" class="header-icon-button usage-summary-button" aria-label="查看剩余额度" title="正在读取剩余额度" aria-expanded="false"><span class="usage-ring" aria-hidden="true"><span id="usagePercent">--</span></span></button>
             <div id="usagePopover" class="usage-popover hidden" role="status">
               <strong id="usageDetail">正在读取剩余额度…</strong>
@@ -196,6 +204,6 @@
       </div>
       <div class="image-viewer-stage"><img id="imageViewerImage" alt="" /></div>
     </dialog>
-    <script src="remote.js?v=20260803-picker"></script>
+    <script src="remote.js?v=20260825-sync-fix"></script>
   </body>
 </html>
