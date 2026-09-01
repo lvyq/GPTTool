@@ -108,6 +108,7 @@ export class CodexService {
   #officialTitles: Record<string, string> = {};
   #officialThreads: OfficialThreadSummary[] = [];
   #officialThreadOrder: string[] = [];
+  #rendererThreadOrder: string[] = [];
   #officialThreadListAuthoritative = false;
   #officialTitlesReadAt = 0;
   #officialTitlesRequest?: Promise<Record<string, string>>;
@@ -415,16 +416,20 @@ export class CodexService {
   async #threadsWithOfficialTitles(limit: number): Promise<CodexThread[]> {
     const titles = await this.#cachedOfficialTitles();
     const threads = await this.#sessions.listThreads(Math.max(limit, Math.min(200, limit * 3)));
-    const order = new Map(this.#officialThreadOrder.map((id, index) => [id, index]));
+    const combinedOrder = [...new Set([...this.#rendererThreadOrder, ...this.#officialThreadOrder])];
+    const order = new Map(combinedOrder.map((id, index) => [id, index]));
     // When app-server supplied the official list it is the UI source of truth.
     // The local database can retain archived/hidden/imported rollouts that the
     // current official client no longer shows; including those made the Web
     // task drawer visibly differ from the desktop application.
     if (this.#officialThreadListAuthoritative) {
       const localById = new Map(threads.map((thread) => [thread.id, thread]));
-      return this.#officialThreads.slice(0, limit).map((official) => {
-        const local = localById.get(official.id);
-        if (local) return applyOfficialTitle(local, official.name || titles[official.id]);
+      const officialById = new Map(this.#officialThreads.map((thread) => [thread.id, thread]));
+      return combinedOrder.map((id) => {
+        const official = officialById.get(id);
+        const local = localById.get(id);
+        if (local) return applyOfficialTitle(local, official?.name || titles[id]);
+        if (!official) return undefined;
         return {
           id: official.id,
           name: official.name || '未命名任务',
@@ -434,7 +439,7 @@ export class CodexService {
           updatedAt: official.updatedAt,
           status: official.status,
         } satisfies CodexThread;
-      });
+      }).filter((thread): thread is CodexThread => Boolean(thread)).slice(0, limit);
     }
     const visibleThreads = threads;
     return visibleThreads
@@ -468,6 +473,7 @@ export class CodexService {
   }
 
   async #readOfficialTitles(): Promise<Record<string, string>> {
+    let appServerTitles: Record<string, string> = {};
     if (this.#appServer) {
       const collected: OfficialThreadSummary[] = [];
       const seen = new Set<string>();
@@ -475,7 +481,9 @@ export class CodexService {
       let recognized = false;
       for (let page = 0; page < 20; page += 1) {
         const response = await this.#appServer.request<unknown>(
-          'thread/list', cursor ? { limit: 100, cursor } : { limit: 100 },
+          'thread/list', cursor
+            ? { limit: 100, cursor, sortKey: 'recency_at', sortDirection: 'desc' }
+            : { limit: 100, sortKey: 'recency_at', sortDirection: 'desc' },
         ).catch(() => undefined);
         const normalized = normalizeAppServerThreads(response, this.#operationRules?.appServer);
         if (!normalized.recognized) break;
@@ -495,17 +503,23 @@ export class CodexService {
         this.#officialThreadListAuthoritative = true;
         this.#officialThreads = collected;
         this.#officialThreadOrder = collected.map((thread) => thread.id);
-        return Object.fromEntries(collected
+        appServerTitles = Object.fromEntries(collected
           .filter((thread) => thread.name)
           .map((thread) => [thread.id, thread.name]));
       }
-      if (this.#officialThreadListAuthoritative && this.#officialThreads.length) return this.#officialTitles;
+      if (!Object.keys(appServerTitles).length && this.#officialThreadListAuthoritative) {
+        appServerTitles = Object.fromEntries(this.#officialThreads
+          .filter((thread) => thread.name)
+          .map((thread) => [thread.id, thread.name]));
+      }
     }
-    const titles = await this.#cdp.threadTitles();
-    // The official sidebar is virtualized and exposes only the rows around the
-    // current scroll position. It can enrich titles, but must never filter or
-    // reorder the complete app-server/local task list.
-    return { ...this.#officialTitles, ...titles };
+    const rendererTitles = await this.#cdp.threadTitles().catch(() => ({}));
+    // The renderer is the exact list currently visible to the user. Keep its
+    // order as an authoritative prefix and fill virtualized/off-screen rows
+    // from the paginated app-server result. This also preserves renderer-only
+    // tasks while the app-server index is briefly behind after an app update.
+    this.#rendererThreadOrder = Object.keys(rendererTitles);
+    return { ...this.#officialTitles, ...appServerTitles, ...rendererTitles };
   }
 
   async #composerPreferences(): Promise<ComposerPreferences> {
@@ -755,10 +769,17 @@ export class CodexService {
     if (currentActiveId && currentActiveId !== previous.activeTurnId) {
       this.#emit({ method: 'turn/started', params: { threadId: thread.id, turn: { id: currentActiveId, status: 'inProgress' } } });
     }
-    for (const user of lastTurn.items.filter((item) => item.type === 'userMessage')) {
+    const userItems = lastTurn.items.filter((item) => item.type === 'userMessage');
+    for (const [userIndex, user] of userItems.entries()) {
       if (previous.userItemIds.has(user.id)) continue;
       previous.userItemIds.add(user.id);
-      const queuedByOfficialClient = Boolean(previous.activeTurnId && currentActiveId === previous.activeTurnId);
+      // The rollout can expose the active turn before its first user item is
+      // flushed. That delayed first item belongs to the running conversation;
+      // only the second and later user items in the same active turn are the
+      // official desktop's queued follow-ups.
+      const queuedByOfficialClient = Boolean(
+        userIndex > 0 && previous.activeTurnId && currentActiveId === previous.activeTurnId,
+      );
       if (queuedByOfficialClient) {
         previous.officialQueueItemIds.add(user.id);
         this.#emit({

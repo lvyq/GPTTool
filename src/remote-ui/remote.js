@@ -110,6 +110,12 @@
   messageResizeObserver?.observe(ui.messages);
   messageMutationObserver.observe(ui.messages, { childList: true, subtree: true });
   connect();
+  // The official client can create, reorder or archive tasks without emitting
+  // an event through this WebSocket. Periodic reconciliation keeps a long-open
+  // mobile page aligned instead of retaining its startup snapshot forever.
+  setInterval(() => {
+    if (connectionOnline && !threadOpening) void loadThreads();
+  }, 10_000);
 
   function bindUi() {
     ui.refreshThreads.addEventListener('click', loadThreads);

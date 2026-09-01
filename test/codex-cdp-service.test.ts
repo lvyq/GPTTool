@@ -387,7 +387,7 @@ test('normalizes nested app-server task lists after an official client protocol 
   }
 });
 
-test('uses visible CDP titles only as enrichment and never filters its virtualized subset', async () => {
+test('uses visible CDP tasks as an ordered prefix without filtering local fallbacks', async () => {
   const cdp = new FakeCdpClient();
   cdp.titles = { 'thread-1': 'CDP 当前标题' };
   const appServer = new FakeAppServerClient();
@@ -408,8 +408,37 @@ test('uses visible CDP titles only as enrichment and never filters its virtualiz
   try {
     const list = await service.request<{ data: CodexThread[] }>('thread/list');
     assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
-      { id: 'local-only', name: '旧缓存' },
       { id: 'thread-1', name: 'CDP 当前标题' },
+      { id: 'local-only', name: '旧缓存' },
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('keeps a renderer-visible task while the official app-server index is behind', async () => {
+  const cdp = new FakeCdpClient();
+  cdp.titles = { 'renderer-only': '刚在官方客户端创建', 'thread-1': '现有任务' };
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { data: [{ id: 'thread-1', name: '现有任务' }] };
+  const sessions = new FakeSessionStore();
+  const rendererOnly = { ...structuredClone(sessions.thread), id: 'renderer-only', name: '本地旧标题' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [structuredClone(sessions.thread), rendererOnly],
+      readThread: (id: string) => id === rendererOnly.id ? structuredClone(rendererOnly) : sessions.readThread(id),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(list.data.map(({ id, name }) => ({ id, name })), [
+      { id: 'renderer-only', name: '刚在官方客户端创建' },
+      { id: 'thread-1', name: '现有任务' },
     ]);
   } finally {
     await service.stop();
@@ -437,8 +466,8 @@ test('reads every app-server cursor page and builds the list from official task 
       { id: 'thread-1', name: '第二页官方任务' },
     ]);
     assert.deepEqual(appServer.calls.filter(({ method }) => method === 'thread/list').map(({ params }) => params), [
-      { limit: 100 },
-      { limit: 100, cursor: 'page-2' },
+      { limit: 100, sortKey: 'recency_at', sortDirection: 'desc' },
+      { limit: 100, cursor: 'page-2', sortKey: 'recency_at', sortDirection: 'desc' },
     ]);
   } finally {
     await service.stop();
@@ -643,7 +672,9 @@ test('publishes live reasoning and command updates from the official rollout', a
 test('publishes official desktop queued messages with text and attachment metadata', async () => {
   const cdp = new FakeCdpClient();
   const sessions = new FakeSessionStore();
-  sessions.thread.turns = [{ id: 'turn-live', status: 'inProgress', items: [] }];
+  sessions.thread.turns = [{ id: 'turn-live', status: 'inProgress', items: [{
+    id: 'active-user', type: 'userMessage', content: [{ type: 'text', text: '正在执行的任务' }],
+  }] }];
   sessions.thread.status = { type: 'active' };
   const service = new CodexService({
     executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
@@ -672,6 +703,34 @@ test('publishes official desktop queued messages with text and attachment metada
     assert.equal(notifications.some((entry) => entry.method === 'item/completed'
       && (entry.params as { item?: { id?: string } }).item?.id === 'official-queued-1'), false,
     'a queued official prompt must not also be broadcast as a completed chat bubble');
+  } finally {
+    await service.stop();
+  }
+});
+
+test('does not mistake a delayed first user item for an official queued message', async () => {
+  const cdp = new FakeCdpClient();
+  const sessions = new FakeSessionStore();
+  sessions.thread.turns = [{ id: 'turn-live', status: 'inProgress', items: [] }];
+  sessions.thread.status = { type: 'active' };
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: cdp as never,
+    sessionStore: sessions as never,
+    pollIntervalMs: 10,
+  });
+  const notifications: RpcNotification[] = [];
+  service.onNotification((notification) => notifications.push(notification));
+  await service.start();
+  try {
+    await service.request('thread/read', { threadId: 'thread-1', includeTurns: true });
+    sessions.thread.turns![0]!.items.push({
+      id: 'delayed-active-user', type: 'userMessage', content: [{ type: 'text', text: '当前正在执行的消息' }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(notifications.some((entry) => entry.method === 'official/queue/updated'), false);
+    assert.equal(notifications.some((entry) => entry.method === 'item/completed'
+      && (entry.params as { item?: { id?: string } }).item?.id === 'delayed-active-user'), true);
   } finally {
     await service.stop();
   }

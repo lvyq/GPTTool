@@ -4,6 +4,18 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-01
+
+### Fixed
+
+- Reconcile the task drawer continuously against the official renderer and the complete app-server index.
+- Keep renderer-visible tasks when the app-server index temporarily lags after an official client update.
+- Stop treating a delayed first user item in an active turn as a queued follow-up.
+
+### Changed
+
+- Request app-server task pages in official recency order and refresh long-open Web sessions every ten seconds.
+
 ## [0.2.0] - 2026-08-13
 
 ### Added

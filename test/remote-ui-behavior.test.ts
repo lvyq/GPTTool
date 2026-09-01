@@ -281,6 +281,11 @@ test('deduplicates local and official queue representations by message content a
   assert.doesNotMatch(source, /externalItems = officialQueueItems\.filter\(\(item\) => !next\.items\.some\(\(queued\) => queued\.id === item\.id\)\)/);
 });
 
+test('periodically reconciles a long-open task list with the official client', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  assert.match(source, /setInterval\(\(\) => \{[\s\S]*connectionOnline && !threadOpening[\s\S]*loadThreads\(\)[\s\S]*10_000/);
+});
+
 test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
   const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
   const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');
