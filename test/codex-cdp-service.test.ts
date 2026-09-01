@@ -174,6 +174,37 @@ class FakeSessionStore {
   }
 }
 
+class OfficialWorktreeSessionStore extends FakeSessionStore {
+  listThreads(): CodexThread[] { return []; }
+  readThread(threadId: string, _includeTurns = true, _turnLimit = 120, allowOfficialSubagent = false): CodexThread {
+    if (threadId !== this.thread.id || !allowOfficialSubagent) throw new Error('此任务的本地会话记录不存在');
+    return structuredClone(this.thread);
+  }
+}
+
+test('reads an official-visible worktree task while keeping unlisted subagents hidden', async () => {
+  const appServer = new FakeAppServerClient();
+  const sessions = new OfficialWorktreeSessionStore();
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    cdpClient: new FakeCdpClient() as never,
+    sessionStore: sessions as never,
+    appServerClient: appServer,
+  });
+  await service.start();
+  try {
+    const listed = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.deepEqual(listed.data.map((thread) => thread.id), ['thread-1']);
+    const opened = await service.request<{ thread: CodexThread }>('thread/read', {
+      threadId: 'thread-1', includeTurns: true,
+    });
+    assert.equal(opened.thread.id, 'thread-1');
+    await assert.rejects(service.request('thread/read', { threadId: 'internal-subagent', includeTurns: true }), /本地会话记录不存在/);
+  } finally {
+    await service.stop();
+  }
+});
+
 test('uses CDP for official-client sends and exposes the existing local thread state', async () => {
   const cdp = new FakeCdpClient();
   cdp.titles['thread-1'] = 'Official Demo';

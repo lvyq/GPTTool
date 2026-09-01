@@ -4,6 +4,13 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-01
+
+### Fixed
+
+- Read rollout history for user-visible worktree tasks that newer official clients label as subagents.
+- Keep internal subagent sessions hidden unless the exact task identity is present in the official app-server or renderer list.
+
 ## [0.2.3] - 2026-09-01
 
 ### Fixed

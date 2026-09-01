@@ -155,13 +155,13 @@ export class CodexSessionStore {
     return result;
   }
 
-  async readThread(threadId: string, includeTurns = true, turnLimit = 120): Promise<CodexThread> {
+  async readThread(threadId: string, includeTurns = true, turnLimit = 120, allowOfficialSubagent = false): Promise<CodexThread> {
     let database: Database | undefined;
     let databaseError: unknown;
     let row: ThreadRow | undefined;
     try {
       database = await this.#open();
-      const sourceFilter = tableHasColumn(database, 'threads', 'thread_source')
+      const sourceFilter = !allowOfficialSubagent && tableHasColumn(database, 'threads', 'thread_source')
         ? ` AND COALESCE(thread_source, '') <> 'subagent'`
         : '';
       row = queryRows(database, `
@@ -175,7 +175,8 @@ export class CodexSessionStore {
       database?.close();
     }
     if (!row) {
-      const scanned = scanSessionThreads(this.#sessionsDirectory, 500).find((thread) => thread.id === threadId);
+      const scanned = scanSessionThreads(this.#sessionsDirectory, 500, allowOfficialSubagent)
+        .find((thread) => thread.id === threadId);
       if (!scanned) {
         if (databaseError) throw readableDatabaseError(databaseError);
         throw new Error('此任务的本地会话记录不存在');
@@ -728,7 +729,7 @@ function rolloutActive(filePath: string): boolean {
   }
 }
 
-function scanSessionThreads(directory: string, scanLimit: number): CodexThread[] {
+function scanSessionThreads(directory: string, scanLimit: number, includeSubagents = false): CodexThread[] {
   if (!existsSync(directory)) return [];
   let files: string[];
   try {
@@ -771,7 +772,7 @@ function scanSessionThreads(directory: string, scanLimit: number): CodexThread[]
       }
       if (id && cwd && name) break;
     }
-    if (!id || isSubagent) continue;
+    if (!id || (isSubagent && !includeSubagents)) continue;
     const updatedAt = safeMtime(file);
     threads.push({
       id, name: name || '未命名任务', preview: name || '未命名任务', cwd,

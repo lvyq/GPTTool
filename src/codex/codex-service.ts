@@ -205,7 +205,7 @@ export class CodexService {
         ) as T;
       case 'thread/turns/list': {
         const requested = Math.max(1, Math.min(numberValue(input.limit, 1), 12));
-        const thread = await this.#sessions.readThread(requiredId(input.threadId), true, requested + 1);
+        const thread = await this.#readVisibleSessionThread(requiredId(input.threadId), true, requested + 1);
         return { data: thread.turns?.slice(-numberValue(input.limit, 1)).reverse() ?? [], nextCursor: null } as T;
       }
       case 'thread/start':
@@ -384,9 +384,29 @@ export class CodexService {
     if (this.#pendingThreads.has(threadId)) {
       return { thread: pendingThread(threadId, this.#pendingThreads.get(threadId)?.cwd) };
     }
-    const thread = await this.#withOfficialTitle(await this.#sessions.readThread(threadId, includeTurns, turnLimit));
+    const thread = await this.#withOfficialTitle(await this.#readVisibleSessionThread(threadId, includeTurns, turnLimit));
     if (includeTurns) this.#primeWatcher(thread);
     return { thread };
+  }
+
+  async #readVisibleSessionThread(threadId: string, includeTurns: boolean, turnLimit: number): Promise<CodexThread> {
+    // Newer official clients expose user-visible worktree tasks with
+    // thread_source="subagent". Keep ordinary internal subagents hidden, but
+    // allow history reads when the same identity is present in the official
+    // app-server or renderer task list.
+    try {
+      return await this.#sessions.readThread(threadId, includeTurns, turnLimit);
+    } catch (error) {
+      let officiallyVisible = this.#officialThreads.some((thread) => thread.id === threadId)
+        || this.#rendererThreadOrder.includes(threadId);
+      if (!officiallyVisible) {
+        await this.#cachedOfficialTitles();
+        officiallyVisible = this.#officialThreads.some((thread) => thread.id === threadId)
+          || this.#rendererThreadOrder.includes(threadId);
+      }
+      if (!officiallyVisible) throw error;
+      return this.#sessions.readThread(threadId, includeTurns, turnLimit, true);
+    }
   }
 
   #createPendingThread(cwd?: string): { thread: CodexThread } {
@@ -397,7 +417,7 @@ export class CodexService {
 
   async #resumeThread(threadId: string): Promise<{ thread: CodexThread }> {
     if (this.#pendingThreads.has(threadId)) return this.#readThread(threadId, true, 12);
-    let thread = await this.#sessions.readThread(threadId, true, 12);
+    let thread = await this.#readVisibleSessionThread(threadId, true, 12);
     try {
       await this.#navigate(`codex://threads/${encodeURIComponent(threadId)}`);
       await this.#cdp.waitForComposer();
@@ -615,7 +635,7 @@ export class CodexService {
     let canonicalThreadId = threadId;
     let current: CodexThread | undefined;
     if (!pending) {
-      current = await this.#sessions.readThread(threadId, true, 8);
+      current = await this.#readVisibleSessionThread(threadId, true, 8);
       for (const turn of current.turns ?? []) previousTurnIds.add(turn.id);
       this.#primeWatcher(current);
     }
@@ -715,7 +735,7 @@ export class CodexService {
   async #waitForActiveTurn(threadId: string, previousTurnIds: ReadonlySet<string>): Promise<string | undefined> {
     const deadline = Date.now() + 12_000;
     while (Date.now() < deadline) {
-      const thread = await this.#sessions.readThread(threadId, true, 2);
+      const thread = await this.#readVisibleSessionThread(threadId, true, 2);
       // The official state database can update several seconds after the JSONL
       // rollout. A newly observed turn id is authoritative confirmation that
       // the message was accepted, even while the database timestamp is stale.
@@ -746,7 +766,7 @@ export class CodexService {
       await this.#autoApproveVisibleRequest();
       for (const [threadId, previous] of this.#watched) {
         let thread: CodexThread;
-        try { thread = await this.#sessions.readThread(threadId, true, 1); } catch { continue; }
+        try { thread = await this.#readVisibleSessionThread(threadId, true, 1); } catch { continue; }
         this.#publishThreadChanges(thread, previous);
       }
     } finally {

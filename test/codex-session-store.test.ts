@@ -364,6 +364,8 @@ test('hides internal subagent sessions from both the database and JSONL fallback
     assert.deepEqual((await store.listThreads()).map((thread) => thread.id), ['user-thread']);
     await assert.rejects(store.readThread('database-subagent'), /本地会话记录不存在/);
     await assert.rejects(store.readThread('scan-subagent'), /本地会话记录不存在/);
+    assert.equal((await store.readThread('database-subagent', true, 12, true)).id, 'database-subagent');
+    assert.equal((await store.readThread('scan-subagent', true, 12, true)).id, 'scan-subagent');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
