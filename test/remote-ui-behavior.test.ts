@@ -286,6 +286,19 @@ test('periodically reconciles a long-open task list with the official client', a
   assert.match(source, /setInterval\(\(\) => \{[\s\S]*connectionOnline && !threadOpening[\s\S]*loadThreads\(\)[\s\S]*10_000/);
 });
 
+test('groups Codex worktree tasks under their canonical project and marks them visually', async () => {
+  const [source, stylesheet] = await Promise.all([
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+  ]);
+  assert.match(source, /function worktreeProjectInfo\(value\)/);
+  assert.match(source, /worktrees\\\/\[\^\/\]\+\\\/\(\[\^\/\]\+\)/);
+  assert.match(source, /normalProjectsByName\.get\(worktree\.name\.toLocaleLowerCase/);
+  assert.match(source, /projects\.values\(\)\]\.sort\(\(left, right\) => right\.updatedAt - left\.updatedAt\)/);
+  assert.match(source, /thread-worktree-indicator/);
+  assert.match(stylesheet, /\.thread-worktree-indicator svg/);
+});
+
 test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
   const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
   const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');

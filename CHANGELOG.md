@@ -4,6 +4,18 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-01
+
+### Fixed
+
+- Group Codex worktree tasks under their canonical project instead of exposing temporary worktree paths as separate projects.
+- Exclude temporary Codex worktree paths from the new-task project directory picker.
+
+### Changed
+
+- Match the official client project ordering by each project's latest task activity.
+- Show the official-style worktree marker beside worktree tasks.
+
 ## [0.2.2] - 2026-09-01
 
 ### Fixed

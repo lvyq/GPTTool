@@ -332,6 +332,25 @@ aside {
   font-size: 9px;
 }
 
+.thread-worktree-indicator {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--subtle);
+}
+
+.thread-worktree-indicator svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .muted {
   margin: 12px;
   color: var(--muted);

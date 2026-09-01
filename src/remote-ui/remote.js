@@ -1038,6 +1038,15 @@
         const title = document.createElement('strong'); title.textContent = thread.name || thread.preview || '未命名任务';
         const time = document.createElement('small'); time.textContent = formatTime(thread.updatedAt);
         button.append(title, time); button.addEventListener('click', () => selectThread(thread.id));
+        row.append(button);
+        if (worktreeProjectInfo(thread.cwd)) {
+          const worktree = document.createElement('span');
+          worktree.className = 'thread-worktree-indicator';
+          worktree.title = '项目工作树任务';
+          worktree.setAttribute('aria-label', '项目工作树任务');
+          worktree.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-6 6M10 19H5v-5M5 19l6-6"/></svg>';
+          row.append(worktree);
+        }
         const running = thread?.status?.type === 'active' || thread?.status === 'active';
         if (running) {
           row.classList.add('running');
@@ -1045,8 +1054,8 @@
           indicator.className = 'thread-running-indicator';
           indicator.title = '任务正在运行';
           indicator.setAttribute('aria-label', '任务正在运行');
-          row.append(button, indicator);
-        } else row.append(button);
+          row.append(indicator);
+        }
         body.append(row);
       }
       section.append(heading, body);
@@ -1080,6 +1089,7 @@
       const projectPath = String(thread.cwd || '').trim();
       if (!projectPath) continue;
       if (/[\\/]Documents[\\/]Codex[\\/]\d{4}-\d{2}-\d{2}(?:[\\/]|$)/i.test(projectPath)) continue;
+      if (worktreeProjectInfo(projectPath)) continue;
       const key = projectPath.replace(/[\\/]+$/, '').toLowerCase();
       const previous = directories.get(key);
       const numericTime = Number(thread.updatedAt || 0);
@@ -1312,20 +1322,57 @@
   function groupThreads(threads) {
     const projects = new Map();
     const chats = [];
+    const normalProjectsByName = new Map();
     for (const thread of threads) {
-      const cwd = String(thread.cwd || '').replace(/\\/g, '/').replace(/\/+$/, '');
-      if (!cwd || /\/Documents\/Codex\/\d{4}-\d{2}-\d{2}(?:\/|$)/i.test(cwd)) {
+      const cwd = normalizeProjectPath(thread.cwd);
+      if (!cwd || isChatDirectory(cwd) || worktreeProjectInfo(cwd)) continue;
+      const label = projectDirectoryName(cwd);
+      const key = label.toLocaleLowerCase('en-US');
+      const updatedAt = normalizedThreadTime(thread);
+      const previous = normalProjectsByName.get(key);
+      if (!previous || updatedAt > previous.updatedAt) normalProjectsByName.set(key, { cwd, label, updatedAt });
+    }
+    for (const thread of threads) {
+      const cwd = normalizeProjectPath(thread.cwd);
+      if (!cwd || isChatDirectory(cwd)) {
         chats.push(thread);
         continue;
       }
-      const label = cwd.split('/').filter(Boolean).pop() || '项目';
-      const key = `project:${cwd.toLowerCase()}`;
-      if (!projects.has(key)) projects.set(key, { key, label, cwd, threads: [] });
-      projects.get(key).threads.push(thread);
+      const worktree = worktreeProjectInfo(cwd);
+      const canonical = worktree
+        ? normalProjectsByName.get(worktree.name.toLocaleLowerCase('en-US'))
+        : undefined;
+      const projectCwd = canonical?.cwd || (worktree ? `worktree:${worktree.name}` : cwd);
+      const label = canonical?.label || worktree?.name || projectDirectoryName(cwd);
+      const key = `project:${projectCwd.toLowerCase()}`;
+      if (!projects.has(key)) projects.set(key, { key, label, cwd: projectCwd, updatedAt: 0, threads: [] });
+      const group = projects.get(key);
+      group.threads.push(thread);
+      group.updatedAt = Math.max(group.updatedAt, normalizedThreadTime(thread));
     }
-    const groups = [...projects.values()];
+    const groups = [...projects.values()].sort((left, right) => right.updatedAt - left.updatedAt);
     if (chats.length) groups.push({ key: 'chats', label: '聊天', threads: chats });
     return groups;
+  }
+
+  function normalizeProjectPath(value) {
+    return String(value || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  }
+
+  function isChatDirectory(cwd) {
+    return /\/Documents\/Codex\/\d{4}-\d{2}-\d{2}(?:\/|$)/i.test(String(cwd || ''));
+  }
+
+  function worktreeProjectInfo(value) {
+    const cwd = normalizeProjectPath(value);
+    const match = cwd.match(/\/(?:\.codex|Codex)\/worktrees\/[^/]+\/([^/]+)(?:\/|$)/i);
+    return match?.[1] ? { name: match[1], cwd } : null;
+  }
+
+  function normalizedThreadTime(thread) {
+    const numeric = Number(thread?.updatedAt || 0);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric > 10_000_000_000 ? numeric : numeric * 1000;
+    return Date.parse(thread?.updatedAt || '') || 0;
   }
 
   function renameActionButton(label) {
