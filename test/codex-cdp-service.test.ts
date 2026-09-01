@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import type { RpcNotification } from '../src/runtime/line-rpc-client.ts';
 import { CodexService } from '../src/codex/codex-service.ts';
@@ -391,6 +394,51 @@ test('filters retained local rollouts that are absent from the official app-serv
     assert.deepEqual(list.data.map((thread) => thread.id), ['thread-1']);
   } finally {
     await service.stop();
+  }
+});
+
+test('uses official project assignments to group handoff tasks while preserving worktree paths', async () => {
+  const homeDirectory = await mkdtemp(path.join(os.tmpdir(), 'gpttool-project-assignment-'));
+  const assignedRoot = '/Users/demo/CodexWork/volt2ai';
+  const legacyCwd = '/Users/demo/Documents/Codex/2026-08-24/handoff-output';
+  const worktreeCwd = '/Users/demo/.codex/worktrees/abc123/volt2ai';
+  const sessions = new FakeSessionStore();
+  const handoff = { ...structuredClone(sessions.thread), id: 'handoff-thread', cwd: legacyCwd, name: '闪电兔' };
+  const worktree = { ...structuredClone(sessions.thread), id: 'worktree-thread', cwd: worktreeCwd, name: 'Worktree 任务' };
+  const appServer = new FakeAppServerClient();
+  appServer.threadListResponse = { data: [
+    { id: handoff.id, name: handoff.name, cwd: legacyCwd },
+    { id: worktree.id, name: worktree.name, cwd: worktreeCwd },
+  ] };
+  await mkdir(path.join(homeDirectory, '.codex'), { recursive: true });
+  await writeFile(path.join(homeDirectory, '.codex', '.codex-global-state.json'), JSON.stringify({
+    'local-projects': {
+      'volt-project': { id: 'volt-project', rootPaths: [assignedRoot] },
+    },
+    'thread-project-assignments': {
+      [handoff.id]: { projectKind: 'local', projectId: 'volt-project' },
+      [worktree.id]: { projectKind: 'local', projectId: 'volt-project' },
+    },
+  }));
+  const service = new CodexService({
+    executable: '/Applications/ChatGPT.app/Contents/Resources/codex',
+    homeDirectory,
+    cdpClient: new FakeCdpClient() as never,
+    appServerClient: appServer,
+    sessionStore: {
+      ...sessions,
+      listThreads: () => [handoff, worktree],
+      readThread: (id: string) => structuredClone(id === handoff.id ? handoff : worktree),
+    } as never,
+  });
+  await service.start();
+  try {
+    const list = await service.request<{ data: CodexThread[] }>('thread/list');
+    assert.equal(list.data.find(({ id }) => id === handoff.id)?.cwd, assignedRoot);
+    assert.equal(list.data.find(({ id }) => id === worktree.id)?.cwd, worktreeCwd);
+  } finally {
+    await service.stop();
+    await rm(homeDirectory, { recursive: true, force: true });
   }
 });
 

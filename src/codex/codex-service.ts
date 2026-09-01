@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { RpcNotification, RpcServerRequest } from '../runtime/line-rpc-client.ts';
 import {
   CdpClient,
@@ -106,6 +107,7 @@ export class CodexService {
   #autoApprove = false;
   #lastAutoApprovalAt = 0;
   #officialTitles: Record<string, string> = {};
+  #officialProjectCwds: Record<string, string> = {};
   #officialThreads: OfficialThreadSummary[] = [];
   #officialThreadOrder: string[] = [];
   #rendererThreadOrder: string[] = [];
@@ -448,9 +450,9 @@ export class CodexService {
       return combinedOrder.map((id) => {
         const official = officialById.get(id);
         const local = localById.get(id);
-        if (local) return applyOfficialTitle(local, official?.name || titles[id]);
+        if (local) return this.#applyOfficialMetadata(local, official?.name || titles[id]);
         if (!official) return undefined;
-        return {
+        return this.#applyOfficialMetadata({
           id: official.id,
           name: official.name || '未命名任务',
           preview: official.preview || official.name || '未命名任务',
@@ -458,12 +460,12 @@ export class CodexService {
           createdAt: official.createdAt,
           updatedAt: official.updatedAt,
           status: official.status,
-        } satisfies CodexThread;
+        } satisfies CodexThread, official.name || titles[id]);
       }).filter((thread): thread is CodexThread => Boolean(thread)).slice(0, limit);
     }
     const visibleThreads = threads;
     return visibleThreads
-      .map((thread) => applyOfficialTitle(thread, titles[thread.id]))
+      .map((thread) => this.#applyOfficialMetadata(thread, titles[thread.id]))
       .sort((left, right) => {
         const leftIndex = order.get(left.id);
         const rightIndex = order.get(right.id);
@@ -476,7 +478,18 @@ export class CodexService {
 
   async #withOfficialTitle(thread: CodexThread): Promise<CodexThread> {
     const titles = await this.#cachedOfficialTitles();
-    return applyOfficialTitle(thread, titles[thread.id]);
+    return this.#applyOfficialMetadata(thread, titles[thread.id]);
+  }
+
+  #applyOfficialMetadata(thread: CodexThread, title: string | undefined): CodexThread {
+    const titled = applyOfficialTitle(thread, title);
+    const officialProjectCwd = this.#officialProjectCwds[thread.id];
+    // Keep a real Codex worktree path intact: the Web UI uses it to display the
+    // worktree marker and already resolves it to its canonical project. For
+    // handoff/projectless tasks, the official assignment is the source of
+    // truth and replaces their obsolete Documents/Codex output directory.
+    if (!officialProjectCwd || isCodexWorktreePath(titled.cwd)) return titled;
+    return { ...titled, cwd: officialProjectCwd };
   }
 
   async #cachedOfficialTitles(): Promise<Record<string, string>> {
@@ -493,6 +506,7 @@ export class CodexService {
   }
 
   async #readOfficialTitles(): Promise<Record<string, string>> {
+    this.#officialProjectCwds = await this.#readOfficialProjectCwds().catch(() => this.#officialProjectCwds);
     let appServerTitles: Record<string, string> = {};
     if (this.#appServer) {
       const collected: OfficialThreadSummary[] = [];
@@ -540,6 +554,35 @@ export class CodexService {
     // tasks while the app-server index is briefly behind after an app update.
     this.#rendererThreadOrder = Object.keys(rendererTitles);
     return { ...this.#officialTitles, ...appServerTitles, ...rendererTitles };
+  }
+
+  async #readOfficialProjectCwds(): Promise<Record<string, string>> {
+    const globalStatePath = path.join(this.#homeDirectory, '.codex', '.codex-global-state.json');
+    const globalState = asRecord(JSON.parse(await readFile(globalStatePath, 'utf8')));
+    const atoms = asRecord(globalState?.['electron-persisted-atom-state']);
+    // Current desktop builds store these maps at the top level. Retain the
+    // nested fallback for older releases that persisted them as atom values.
+    const assignments = asRecord(globalState?.['thread-project-assignments'])
+      ?? asRecord(atoms?.['thread-project-assignments']);
+    const projects = asRecord(globalState?.['local-projects'])
+      ?? asRecord(atoms?.['local-projects']);
+    if (!assignments || !projects) return {};
+
+    const projectRoots: Record<string, string> = {};
+    for (const [projectId, rawProject] of Object.entries(projects)) {
+      const project = asRecord(rawProject);
+      const roots = Array.isArray(project?.rootPaths) ? project.rootPaths : [];
+      const root = roots.find((value): value is string => typeof value === 'string' && path.isAbsolute(value));
+      if (root) projectRoots[projectId] = path.normalize(root);
+    }
+
+    const result: Record<string, string> = {};
+    for (const [threadId, rawAssignment] of Object.entries(assignments)) {
+      const projectId = stringValue(asRecord(rawAssignment)?.projectId);
+      const root = projectRoots[projectId];
+      if (root) result[threadId] = root;
+    }
+    return result;
   }
 
   async #composerPreferences(): Promise<ComposerPreferences> {
@@ -1029,6 +1072,10 @@ function delay(milliseconds: number): Promise<void> {
 function applyOfficialTitle(thread: CodexThread, title: string | undefined): CodexThread {
   const normalized = String(title || '').replace(/\s+/g, ' ').trim();
   return normalized ? { ...thread, name: normalized, preview: normalized } : thread;
+}
+
+function isCodexWorktreePath(cwd: string): boolean {
+  return /[\\/](?:\.codex|Codex)[\\/]worktrees[\\/][^\\/]+[\\/]/i.test(cwd);
 }
 
 function providerComposerPreferences(provider: CodexProviderStatus): {

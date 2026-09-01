@@ -4,6 +4,13 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-01
+
+### Fixed
+
+- Follow the official client's project assignments for handoff and legacy projectless tasks, so tasks such as “闪电兔” remain grouped under their assigned local project.
+- Preserve Codex worktree paths and their visual marker while reconciling official project membership.
+
 ## [0.2.4] - 2026-09-01
 
 ### Fixed
