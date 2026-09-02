@@ -8,6 +8,8 @@ import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 const require = createRequire(import.meta.url);
 const STALE_IN_PROGRESS_AFTER_MS = 10 * 60 * 1000;
 const MAX_ROLLOUT_CACHE_FILES = 6;
+const MAX_ROLLOUT_CACHE_BYTES = 32 * 1024 * 1024;
+const rolloutCacheBytes = new Map<string, number>();
 const ROLLOUT_READ_BLOCK_BYTES = 1024 * 1024;
 const MAX_ROLLOUT_RECORD_BYTES = 24 * 1024 * 1024;
 // Version 2 re-parses attachment prompts written by newer Codex builds that
@@ -513,13 +515,30 @@ export function parseRollout(filePath: string, turnLimit = 120): CodexTurn[] {
     mtimeMs: fileStat.mtimeMs,
     stale,
     turnLimit: boundedTurnLimit,
-    turns: cloneTurns(result),
+    turns: result,
   });
   return result;
 }
 
 export function clearRolloutCache(): void {
   rolloutCache.clear();
+  rolloutCacheBytes.clear();
+}
+
+/** Conservative object-size estimate without allocating another JSON copy. */
+export function estimateHistoryBytes(value: unknown, limit = MAX_ROLLOUT_CACHE_BYTES): number {
+  let bytes = 0;
+  const visit = (item: unknown): void => {
+    if (bytes > limit) return;
+    if (typeof item === 'string') bytes += item.length * 2 + 32;
+    else if (Array.isArray(item)) { bytes += 32; for (const entry of item) { visit(entry); if (bytes > limit) break; } }
+    else if (item && typeof item === 'object') {
+      bytes += 32;
+      for (const [key, entry] of Object.entries(item)) { bytes += key.length * 2 + 16; visit(entry); if (bytes > limit) break; }
+    } else bytes += 8;
+  };
+  visit(value);
+  return bytes;
 }
 
 function cloneTurns(turns: CodexTurn[]): CodexTurn[] {
@@ -568,11 +587,22 @@ function countTaskStartsAfter(filePath: string, start: number, size: number, lim
 }
 
 function touchRolloutCache(filePath: string, entry: NonNullable<ReturnType<typeof rolloutCache.get>>): void {
+  const existing = rolloutCache.get(filePath) === entry;
+  const bytes = rolloutCacheBytes.get(filePath) && existing
+    ? rolloutCacheBytes.get(filePath)!
+    : estimateHistoryBytes(entry.turns);
   rolloutCache.delete(filePath);
-  rolloutCache.set(filePath, entry);
-  while (rolloutCache.size > MAX_ROLLOUT_CACHE_FILES) {
+  rolloutCacheBytes.delete(filePath);
+  // Large histories remain readable, but must not be retained or cloned twice.
+  if (bytes > MAX_ROLLOUT_CACHE_BYTES) return;
+  rolloutCache.set(filePath, existing ? entry : { ...entry, turns: cloneTurns(entry.turns) });
+  rolloutCacheBytes.set(filePath, bytes);
+  let totalBytes = [...rolloutCacheBytes.values()].reduce((sum, size) => sum + size, 0);
+  while (rolloutCache.size > MAX_ROLLOUT_CACHE_FILES || totalBytes > MAX_ROLLOUT_CACHE_BYTES) {
     const oldest = rolloutCache.keys().next().value;
     if (typeof oldest !== 'string') break;
+    totalBytes -= rolloutCacheBytes.get(oldest) ?? 0;
+    rolloutCacheBytes.delete(oldest);
     rolloutCache.delete(oldest);
   }
 }

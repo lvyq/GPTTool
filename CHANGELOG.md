@@ -4,6 +4,17 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-09-03
+
+### Fixed
+
+- Bound retained rollout history by a 32 MiB estimated-memory budget as well as entry count.
+- Avoid cloning oversized histories into the shared cache.
+
+### Added
+
+- Bounded local numeric memory diagnostics for investigating long-running native crashes.
+
 ## [0.2.6] - 2026-09-02
 
 ### Fixed

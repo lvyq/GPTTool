@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import initSqlJs from 'sql.js';
-import { clearRolloutCache, CodexSessionStore, parseRollout } from '../src/codex/codex-session-store.ts';
+import { clearRolloutCache, CodexSessionStore, parseRollout, estimateHistoryBytes } from '../src/codex/codex-session-store.ts';
+
+test('bounds retained history by estimated bytes without serializing large records', () => {
+  assert.ok(estimateHistoryBytes({ text: 'a'.repeat(1024) }) >= 2048);
+  assert.ok(estimateHistoryBytes([{ text: 'a'.repeat(4096) }, { text: 'b'.repeat(4096) }], 1024) > 1024);
+  assert.ok(estimateHistoryBytes({ text: 'short' }) < 1024);
+});
 
 test('reads the official Codex thread database and rollout history without starting app-server', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'gpttool-codex-state-'));

@@ -17,6 +17,7 @@ import { createRelayPairing, relayPortalUrl } from '../remote/relay-pairing.ts';
 import { createPairingQrCode, createRemoteQrCode } from './remote-qr.ts';
 import { UpdateManager } from './update-manager.ts';
 import type { OfficialCompatibilityReport } from '../codex/compatibility.ts';
+import { startRuntimeDiagnostics } from './runtime-diagnostics.ts';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 // Self-hosted builds provide their own signed update feed. The invalid domain
@@ -54,6 +55,8 @@ void bootstrap().catch((error) => {
 async function bootstrap(): Promise<void> {
   await app.whenReady();
   await migrateLegacyUserData();
+  const stopDiagnostics = startRuntimeDiagnostics(path.join(app.getPath('userData'), 'diagnostics'), app.getVersion());
+  app.once('will-quit', stopDiagnostics);
   configStore = new ConfigStore(app.getPath('userData'));
   config = await configStore.load();
   if (!config.launchAtLogin) config = await configStore.save({ ...config, launchAtLogin: true });
