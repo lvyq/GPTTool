@@ -84,6 +84,24 @@ test('mobile Web surfaces keep a fixed page scale while preserving normal pannin
   assert.match(gatewayCss, /touch-action:\s*pan-x pan-y/);
 });
 
+test('administrator console ships a matching direct-login shell and script', async () => {
+  const [adminHtml, adminScript, relaySource] = await Promise.all([
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'admin.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'server.mjs'), 'utf8'),
+  ]);
+
+  assert.match(adminHtml, /id="adminLogin"/);
+  assert.match(adminHtml, /id="adminLoginForm"/);
+  assert.match(adminHtml, /id="adminUsername"/);
+  assert.match(adminHtml, /id="adminPassword"/);
+  assert.match(adminHtml, /id="adminApp"/);
+  assert.match(adminScript, /\$\('#adminLoginForm'\)\.addEventListener/);
+  assert.match(adminScript, /enterAdmin\(\)\.catch\(\(\)=>showAdminLogin\(\)\)/);
+  assert.match(relaySource, /administration shell publicly/);
+  assert.match(relaySource, /requestUrl\.pathname\.startsWith\('\/api\/admin\/'\)/);
+});
+
 test('device portal supports private in-page QR pairing without a header divider', async () => {
   const [gatewayHtml, gatewayScript, gatewayCss, relaySource] = await Promise.all([
     readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'index.html'), 'utf8'),

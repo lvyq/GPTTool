@@ -4,6 +4,14 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-02
+
+### Fixed
+
+- Restore the administrator login shell so its HTML, JavaScript and styles are always deployed as one compatible set.
+- Keep the administrator page directly reachable while continuing to protect every administrator API with role-based authentication.
+- Add a regression test that prevents a stale administrator page from disabling all dashboard interactions.
+
 ## [0.2.5] - 2026-09-01
 
 ### Fixed
