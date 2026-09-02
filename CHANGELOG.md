@@ -4,6 +4,14 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-09-03
+
+### Fixed
+
+- Read directory listings on the local host without waiting for the official filesystem RPC.
+- Preserve the remote directory boundary and exclude symlinks from folder entries.
+- Show optional compatibility notices in task settings instead of repeated chat toasts.
+
 ## [0.2.7] - 2026-09-03
 
 ### Fixed

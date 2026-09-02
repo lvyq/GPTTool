@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { homedir } from 'node:os';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { LineRpcClient, RpcResponseError, type RpcNotification, type RpcServerRequest } from '../runtime/line-rpc-client.ts';
 
@@ -79,6 +82,10 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
   }
 
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+    if (this.#closed) throw new Error('官方 app-server 客户端已关闭');
+    if (method === 'fs/readDirectory') {
+      return await readHostDirectory((params as { path?: unknown } | undefined)?.path) as T;
+    }
     await this.connect();
     const rpc = this.#rpc!;
     try {
@@ -119,7 +126,7 @@ export class OfficialAppServerClient implements OfficialAppServerTransport {
         this.request('thread/list', { limit: 1 }).then(() => true, () => false),
         this.request('model/list', {}).then(() => true, () => false),
         this.request('account/rateLimits/read', {}).then(() => true, () => false),
-        this.request('fs/readDirectory', { path: directory }).then(() => true, () => false),
+        this.request('fs/readDirectory', { path: homedir() }).then(() => true, () => false),
       ]);
       Object.assign(result, { threads, models, usage, directories });
     } catch {
@@ -212,9 +219,33 @@ export async function createOfficialDirectory(options: CreateDirectoryOptions): 
   await requestOfficialAppServer(options, 'fs/createDirectory', { path: options.path, recursive: true });
 }
 
-/** Lists direct children through the official app-server filesystem API. */
+/** Lists direct children on the same local host as the official app-server. */
 export async function readOfficialDirectory(options: ReadDirectoryOptions): Promise<{ entries: OfficialDirectoryEntry[] }> {
-  return requestOfficialAppServer(options, 'fs/readDirectory', { path: options.path });
+  return readHostDirectory(options.path);
+}
+
+const pendingDirectoryReads = new Map<string, Promise<{ entries: OfficialDirectoryEntry[] }>>();
+
+/** The app-server process and GPTTool share this host; browsing needs no RPC. */
+export async function readHostDirectory(directory: unknown): Promise<{ entries: OfficialDirectoryEntry[] }> {
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) throw new Error('目录必须是绝对路径');
+  const target = path.resolve(directory);
+  let pending = pendingDirectoryReads.get(target);
+  if (!pending) {
+    if (pendingDirectoryReads.size >= 3) throw new Error('目录读取仍在等待系统响应，请稍后重试');
+    pending = readdir(target, { withFileTypes: true }).then((entries) => ({
+      entries: entries.map((entry) => ({ fileName: entry.name, isDirectory: entry.isDirectory(), isFile: entry.isFile() })),
+    }));
+    pendingDirectoryReads.set(target, pending);
+    const clear = () => { pendingDirectoryReads.delete(target); };
+    void pending.then(clear, clear);
+  }
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([pending, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('目录读取超时，请在电脑上检查文件夹访问权限或云盘状态后重试')), 3000);
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
 }
 
 /** Probes stable app-server methods without changing tasks or account state. */
@@ -248,7 +279,7 @@ export async function probeOfficialAppServerCompatibility(options: {
     result.threads = await rpc.request('thread/list', { limit: 1 }).then(() => true, () => false);
     result.models = await rpc.request('model/list', {}).then(() => true, () => false);
     result.usage = await rpc.request('account/rateLimits/read', {}).then(() => true, () => false);
-    result.directories = await rpc.request('fs/readDirectory', { path: options.directory }).then(() => true, () => false);
+    result.directories = await readHostDirectory(homedir()).then(() => true, () => false);
     return result;
   } finally {
     disposeAppServerChild(child, rpc);

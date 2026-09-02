@@ -1,6 +1,6 @@
 {
   "name": "gpttool-desktop",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Cross-platform remote workspace for Codex",
   "author": "lvyq and GPTTool contributors",
   "private": true,

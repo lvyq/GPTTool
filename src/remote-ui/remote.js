@@ -533,7 +533,11 @@
   async function loadCompatibility() {
     try {
       const result = await rpc('compatibility.status.get');
-      if (result?.state === 'degraded') toast(result.message);
+      const compatibilityStatus = document.getElementById('compatibilityStatus');
+      if (compatibilityStatus) {
+        compatibilityStatus.hidden = result?.state !== 'degraded';
+        compatibilityStatus.textContent = result?.state === 'degraded' ? result.message : '';
+      }
       if (result?.state === 'incompatible') {
         setConnection(false, '官方客户端版本不兼容');
         showComposerError(result.message);
