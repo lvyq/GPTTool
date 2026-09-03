@@ -19,10 +19,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm ci --prefix deploy/relay-server
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix backend
+      - run: npm run check --prefix frontend
+      - run: npm run build:backend
+      - run: npm run build:web
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gpttool-web
+          path: frontend/dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gpttool-api
+          path: backend/dist/
+          if-no-files-found: error
       - name: Reject production secrets and generated artifacts
         shell: bash
         run: |

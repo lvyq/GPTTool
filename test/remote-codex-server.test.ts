@@ -197,7 +197,7 @@ test('reports a clear error instead of silently changing the fixed port', async 
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-port-fallback-'));
   const server = new RemoteCodexServer({
     codex: new FakeCodex(),
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: occupiedPort,
     allowLan: false,
@@ -217,7 +217,7 @@ test('protects the remote UI with a token and forwards allowed RPC calls', async
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-'));
   const codex = new FakeCodex();
   const persisted: Array<{ kind: string; key: string; value: unknown }> = [];
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false, defaultCwd: '/safe/project', directoryRoot: '/Safe', onPersistentStateChange: (kind, key, value) => persisted.push({ kind, key, value }) });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false, defaultCwd: '/safe/project', directoryRoot: '/Safe', onPersistentStateChange: (kind, key, value) => persisted.push({ kind, key, value }) });
   try {
     await server.start();
     const base = `http://127.0.0.1:${server.port}`;
@@ -309,7 +309,7 @@ test('serves persisted model settings immediately while refreshing official capa
   const codex = new SlowPreferenceCodex();
   const server = new RemoteCodexServer({
     codex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -349,7 +349,7 @@ test('an explicit quota request waits for the official value instead of returnin
   codex.usagePercentage = 100;
   const server = new RemoteCodexServer({
     codex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -386,7 +386,7 @@ test('external providers replace a stale zero official quota and remain sendable
   const codex = new ExternalProviderCodex();
   const server = new RemoteCodexServer({
     codex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -425,7 +425,7 @@ test('external providers replace a stale zero official quota and remain sendable
 test('uploads attachment chunks, forwards a safe local file to Codex, and removes it after sending', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-file-'));
   const codex = new FakeCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const cookie = await authorize(server);
@@ -461,7 +461,7 @@ test('blocks direct and queued messages when the official Codex quota is exhaust
   codex.usagePercentage = 0;
   const server = new RemoteCodexServer({
     codex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -500,7 +500,7 @@ test('blocks direct and queued messages when the official Codex quota is exhaust
 test('loads history image previews separately from the initial thread response', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-preview-'));
   const codex = new FakeCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const cookie = await authorize(server);
@@ -524,7 +524,7 @@ test('loads history image previews separately from the initial thread response',
 test('loads an older image on demand when the bounded preview cache is full', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-preview-overflow-'));
   const codex = new OverflowPreviewCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const cookie = await authorize(server);
@@ -546,7 +546,7 @@ test('loads an older image on demand when the bounded preview cache is full', as
 test('compacts large thread history before sending it to the remote UI', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-large-'));
   const codex = new FakeCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const base = `http://127.0.0.1:${server.port}`;
@@ -570,7 +570,7 @@ test('pages older thread history without changing chronological turn order', asy
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-history-'));
   const server = new RemoteCodexServer({
     codex: new FakeCodex(),
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -599,7 +599,7 @@ test('pages older thread history without changing chronological turn order', asy
 test('queues, reorders, removes and steers turns, then dispatches queued work in order', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-queue-'));
   const codex = new FakeCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   let observer: WebSocket | undefined;
   try {
     await server.start();
@@ -658,7 +658,7 @@ test('queues, reorders, removes and steers turns, then dispatches queued work in
 test('polls turns started by another app-server and dispatches after they become idle', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-queue-watch-'));
   const codex = new PollingCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const cookie = await authorize(server);
@@ -683,7 +683,7 @@ test('restores queued work after a client restart and waits until the official t
   const firstCodex = new PollingCodex();
   const firstServer = new RemoteCodexServer({
     codex: firstCodex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -706,7 +706,7 @@ test('restores queued work after a client restart and waits until the official t
     const restoredCodex = new PollingCodex();
     const restoredServer = new RemoteCodexServer({
       codex: restoredCodex,
-      assetsDirectory: path.resolve('src/remote-ui'),
+      assetsDirectory: path.resolve('frontend/src/remote'),
       stateDirectory: directory,
       port: 0,
       allowLan: false,
@@ -743,7 +743,7 @@ test('restores a server-side queue snapshot when the local queue file is unavail
   const codex = new PollingCodex();
   const server = new RemoteCodexServer({
     codex,
-    assetsDirectory: path.resolve('src/remote-ui'),
+    assetsDirectory: path.resolve('frontend/src/remote'),
     stateDirectory: directory,
     port: 0,
     allowLan: false,
@@ -782,7 +782,7 @@ test('restores a server-side queue snapshot when the local queue file is unavail
 test('clears a completed active turn even when there are no queued messages', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-active-watch-'));
   const codex = new PollingCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await server.start();
     const cookie = await authorize(server);
@@ -806,7 +806,7 @@ test('clears a completed active turn even when there are no queued messages', as
 test('keeps a failed automatic start at the front and does not retry in a loop', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-queue-error-'));
   const codex = new FakeCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   let observer: WebSocket | undefined;
   try {
     await server.start();
@@ -842,7 +842,7 @@ test('keeps a failed automatic start at the front and does not retry in a loop',
 test('keeps automatic approval opt-in disabled by default and restores the saved preference', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'astergate-remote-approval-'));
   const firstCodex = new FakeCodex();
-  const firstServer = new RemoteCodexServer({ codex: firstCodex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+  const firstServer = new RemoteCodexServer({ codex: firstCodex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
   try {
     await firstServer.start();
     const firstCookie = await authorize(firstServer);
@@ -856,7 +856,7 @@ test('keeps automatic approval opt-in disabled by default and restores the saved
     await firstServer.stop();
 
     const restoredCodex = new FakeCodex();
-    const restoredServer = new RemoteCodexServer({ codex: restoredCodex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0, allowLan: false });
+    const restoredServer = new RemoteCodexServer({ codex: restoredCodex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0, allowLan: false });
     try {
       await restoredServer.start();
       assert.deepEqual(restoredCodex.calls[0], { method: 'approval/auto/set', params: { enabled: true } });
@@ -899,7 +899,7 @@ test('unified model settings serialize application and distinguish a speed failu
   }
   const directory = await mkdtemp(path.join(tmpdir(), 'gpttool-settings-'));
   const codex = new SettingsCodex();
-  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0 });
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('frontend/src/remote'), stateDirectory: directory, port: 0 });
   try {
     await server.start();
     const cookie = await authorize(server);

@@ -30,7 +30,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm ci --prefix deploy/relay-server
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix backend
+      - run: npm run check --prefix frontend
+      - run: npm run build:backend
+      - run: npm run build:web
       - run: npm run check
       - run: npm test
       - run: npm run build
@@ -101,6 +105,7 @@ jobs:
           test -n "$GPTTOOL_UPDATE_MANIFEST_URL"
           test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
       - run: npm ci
+      - run: npm ci --prefix frontend
       - run: npm run build
       - name: Build Apple Silicon, Intel, and universal DMGs
         shell: bash
@@ -144,6 +149,7 @@ jobs:
           test -n "$GPTTOOL_UPDATE_MANIFEST_URL"
           test -n "$GPTTOOL_UPDATE_PUBLIC_KEY"
       - run: npm ci
+      - run: npm ci --prefix frontend
       - run: npm run build
       - name: Build Windows x64 installer
         shell: bash

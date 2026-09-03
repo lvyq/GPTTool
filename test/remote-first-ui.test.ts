@@ -51,8 +51,8 @@ test('desktop exposes only the remote-control product surface', async () => {
 test('desktop and web surfaces share the black white and green design system', async () => {
   const [desktopCss, remoteCss, gatewayCss] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'renderer', 'styles.css'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'gateway.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'gateway.css'), 'utf8'),
   ]);
 
   assert.match(desktopCss, /--green:#42df98/);
@@ -69,11 +69,11 @@ test('desktop and web surfaces share the black white and green design system', a
 
 test('mobile Web surfaces keep a fixed page scale while preserving normal panning', async () => {
   const [remoteHtml, remoteCss, gatewayHtml, gatewayCss, adminHtml] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'gateway.css'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'gateway.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'admin', 'index.html'), 'utf8'),
   ]);
 
   for (const html of [remoteHtml, gatewayHtml, adminHtml]) {
@@ -86,9 +86,9 @@ test('mobile Web surfaces keep a fixed page scale while preserving normal pannin
 
 test('administrator console ships a matching direct-login shell and script', async () => {
   const [adminHtml, adminScript, relaySource] = await Promise.all([
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'admin', 'admin.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'server.mjs'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'admin', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'admin', 'admin.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'backend', 'src', 'server.mjs'), 'utf8'),
   ]);
 
   assert.match(adminHtml, /id="adminLogin"/);
@@ -104,10 +104,10 @@ test('administrator console ships a matching direct-login shell and script', asy
 
 test('device portal supports private in-page QR pairing without a header divider', async () => {
   const [gatewayHtml, gatewayScript, gatewayCss, relaySource] = await Promise.all([
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'gateway.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'gateway', 'gateway.css'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'server.mjs'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'gateway.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'gateway', 'gateway.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'backend', 'src', 'server.mjs'), 'utf8'),
   ]);
 
   assert.match(gatewayHtml, /class="pairing-kicker">添加设备<[\s\S]*<h3>连接新电脑<\/h3>/);
@@ -148,8 +148,8 @@ test('official-client attachment delivery targets the live composer and confirms
 test('public Web UI can be versioned and deployed without rebuilding desktop installers', async () => {
   const [packageSource, webVersionSource, relaySource, deployScript] = await Promise.all([
     readFile(path.join(projectDirectory, 'package.json'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'web-version.json'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'server.mjs'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'web-version.json'), 'utf8'),
+    readFile(path.join(projectDirectory, 'backend', 'src', 'server.mjs'), 'utf8'),
     readFile(path.join(projectDirectory, 'scripts', 'deploy-web-ui.mjs'), 'utf8'),
   ]);
   const packageJson = JSON.parse(packageSource);

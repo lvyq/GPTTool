@@ -30,6 +30,12 @@ uploads/
 # Generated Web UI and release artifacts
 main.js
 deploy/relay-server/public/
+frontend/dist/
+frontend/node_modules/
+frontend/src/gateway/qr-decoder.js
+backend/dist/
+backend/node_modules/
+backend/.runtime/
 deploy/relay-server/node_modules/
 deploy/relay-server/gateway/qr-decoder.js
 # The official marketing/download website is maintained privately.

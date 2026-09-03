@@ -4,6 +4,13 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+### Changed
+
+- Split Web portals and API relay into independent `frontend` and `backend` packages, builds and development processes.
+- Serve production Web assets independently through Nginx; API-only is the backend default, with an explicit legacy static-hosting opt-in.
+- Reuse the frontend build in desktop installers, document migration and preserve session/Origin/device authorization.
+- Add split-deployment HTTP/WebSocket regression coverage and separate CI build artifacts.
+
 ## [0.2.10] - 2026-09-03
 
 ### Changed

@@ -35,7 +35,8 @@ GPTTool 不提供云端模型，也不代管你的 ChatGPT/Codex 登录凭据。
 
 ```mermaid
 flowchart LR
-  Browser["手机 / 浏览器 Web UI"] -->|"HTTPS + WSS"| Relay["GPTTool Relay"]
+  Browser["手机 / 浏览器 Web UI"] -->|"HTTPS 静态资源"| Frontend["独立 Web 前端 · Nginx"]
+  Browser -->|"API + WSS"| Relay["独立 API 后端 · GPTTool Relay"]
   Relay -->|"设备隔离的 WSS"| Desktop["GPTTool Desktop"]
   Desktop --> Orchestrator["Application Orchestrator"]
   Orchestrator --> AppServer["Codex app-server"]
@@ -62,6 +63,8 @@ flowchart LR
 git clone https://github.com/lvyq/GPTTool.git
 cd GPTTool
 npm ci
+npm ci --prefix frontend
+npm ci --prefix backend
 cp .env.example .env
 npm run check
 npm test
@@ -86,19 +89,33 @@ npm run pack
 
 macOS 安装包应在 macOS 构建并完成 Developer ID 签名/公证；Windows 安装包建议在 Windows 或 CI 的 Windows runner 中构建并使用代码签名证书签名。
 
+### 独立前端与后端
+
+Web 前端位于 `frontend/`，API 中继位于 `backend/`，各自有依赖锁文件、构建和启动命令。根工程负责 Electron 桌面客户端。完整步骤见[前后端分离开发与部署](docs/FRONTEND_BACKEND.zh-CN.md)。
+
+```bash
+npm run build:web       # frontend/dist：门户、管理页、消息页
+npm run build:backend   # backend/dist：独立 API 服务
+# 两个终端分别运行（先按文档创建 backend/.env）：
+npm run dev:backend
+npm run dev:web         # http://localhost:5173/remote/
+```
+
 ### 部署公网中继
 
 1. 按 [自托管指南](docs/SELF_HOSTING.zh-CN.md) 创建专用用户与 PostgreSQL 数据库；
 2. 将 `deploy/relay-server/.env.example` 复制到服务器外部的受限环境文件；
-3. 构建 Web UI 与二维码解码器；
-4. 配置 systemd 和 Nginx 示例；
+3. 分别构建 `frontend/dist` 与 `backend/dist`；
+4. 配置 systemd 和前后端分离的 Nginx 示例；
 5. 构建桌面端时设置自己的 `GPTTOOL_RELAY_URL`。
 
 ```bash
 npm run build:web
-npm run build:gateway
-cd deploy/relay-server
+npm run build:backend
+# 将 frontend/dist 部署到静态目录，将 backend/dist 部署到 API 服务目录。
+cd backend/dist
 npm ci --omit=dev
+# 由进程管理器加载服务器环境配置后：
 node server.mjs
 ```
 

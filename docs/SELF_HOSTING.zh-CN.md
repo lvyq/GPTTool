@@ -20,14 +20,15 @@ CREATE DATABASE gpttool OWNER gpttool_app;
 
 数据库应只监听回环或私网。不要把 5432 暴露到公网。Relay 首次启动会创建所需表。
 
-## 3. 安装 Relay
+## 3. 分别安装前端与 Relay
 
-将以下文件复制到 `/opt/gpttool-relay`：
+从源码分别运行 `npm ci --prefix frontend`、`npm ci --prefix backend`，然后 `npm run build:web`、`npm run build:backend`。
 
-- `deploy/relay-server/*.mjs`
-- `deploy/relay-server/package*.json`
-- `deploy/relay-server/gateway/`
-- `deploy/relay-server/public/`（先运行 `npm run build:web`）
+- `backend/dist/` 的内容复制到 `/opt/gpttool-relay`；
+- `frontend/dist/` 的内容复制到 `/srv/gpttool-web`，保留 gateway/admin/remote 子目录；
+- 不要上传源码仓库中的 `.env`、运行数据或私有目录。
+
+新部署设置 `ASTERGATE_SERVE_FRONTEND=false`，API 服务不托管网页。旧部署迁移与回滚见[分离部署指南](FRONTEND_BACKEND.zh-CN.md)。
 
 ```bash
 cd /opt/gpttool-relay
@@ -43,7 +44,7 @@ sudo chmod 0640 /etc/gpttool-relay.env
 
 ## 4. systemd 与 Nginx
 
-复制 `gpttool-relay.service.example` 为 `/etc/systemd/system/gpttool-relay.service`，按实际路径调整；把 `nginx-location.conf.example` 合并到现有 HTTPS server block。
+复制 `deploy/relay-server/gpttool-relay.service.example` 为 `/etc/systemd/system/gpttool-relay.service`，按实际路径调整；把同目录下 `nginx-separated.conf.example` 合并到现有 HTTPS server block。旧 `nginx-location.conf.example` 仅适用于显式启用静态托管的过渡模式。
 
 ```bash
 sudo systemctl daemon-reload
@@ -60,6 +61,7 @@ export GPTTOOL_RELAY_URL='wss://gpttool.example.com/remote/agent'
 export GPTTOOL_UPDATE_MANIFEST_URL='https://updates.example.com/gpttool/latest.json'
 export GPTTOOL_UPDATE_PUBLIC_KEY='<base64-der-ed25519-public-key>'
 npm ci
+npm ci --prefix frontend
 npm run pack
 ```
 

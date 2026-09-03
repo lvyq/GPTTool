@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { build } from 'esbuild';
+import '../frontend/scripts/build.mjs';
 
 if (existsSync('.env')) {
   process.loadEnvFile('.env');
@@ -39,4 +40,4 @@ await build({
 });
 
 await cp('src/renderer', 'dist/renderer', { recursive: true });
-await cp('src/remote-ui', 'dist/remote-ui', { recursive: true });
+await cp('frontend/dist/remote', 'dist/remote-ui', { recursive: true });

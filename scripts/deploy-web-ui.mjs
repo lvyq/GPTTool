@@ -8,7 +8,7 @@ const host = requiredEnv('GPTTOOL_WEB_DEPLOY_HOST');
 const destination = process.env.GPTTOOL_WEB_DEPLOY_DIR || '/opt/astergate-relay/public/';
 
 await run('ssh', [host, `mkdir -p ${shellQuote(destination)} && chown astergate:astergate ${shellQuote(destination)}`]);
-await run('rsync', ['-az', '--delete', 'deploy/relay-server/public/', `${host}:${destination}`]);
+await run('rsync', ['-az', '--delete', 'frontend/dist/remote/', `${host}:${destination}`]);
 await run('ssh', [
   host,
   `chown -R astergate:astergate ${shellQuote(destination)}`

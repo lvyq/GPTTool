@@ -8,8 +8,8 @@ const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectDirectory = path.join(testDirectory, '..');
 
 test('model badge opens settings directly and speed is loaded only on explicit settings actions', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
-  const markup = await readFile(path.join(projectDirectory, 'src/remote-ui/index.html'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend/src/remote/remote.js'), 'utf8');
+  const markup = await readFile(path.join(projectDirectory, 'frontend/src/remote/index.html'), 'utf8');
   assert.match(source, /ui.showModel.addEventListener\('click', showModelSettings\)/);
   assert.match(markup, /aria-label="设置模型、强度与速度"[^>]*aria-haspopup="dialog"/);
   assert.match(markup, /id="speedSelect"/);
@@ -26,7 +26,7 @@ test('model badge opens settings directly and speed is loaded only on explicit s
 });
 
 test('locks a newly opened task to the latest message until the user scrolls', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /beginLatestPositionLock\(threadId\);[\s\S]*selectedThreadId = threadId;[\s\S]*renderThreadSkeleton\(\)/);
   assert.match(source, /if \(isLatestPositionLocked\(\)\) return;[\s\S]*scrollTop < 140/);
@@ -36,8 +36,8 @@ test('locks a newly opened task to the latest message until the user scrolls', a
 
 test('uses a dedicated execution activity indicator instead of a blinking message caret', async () => {
   const [source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(source, /execution-wait working-placeholder/);
@@ -49,8 +49,8 @@ test('uses a dedicated execution activity indicator instead of a blinking messag
 
 test('shows a stopping state until the official task confirms completion', async () => {
   const [source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(source, /showStoppingPlaceholder\(turnId\)/);
@@ -62,7 +62,7 @@ test('shows a stopping state until the official task confirms completion', async
 });
 
 test('automatically retries a transient Codex session database read failure', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /isRecoverableSessionReadError\(message\)/);
   assert.match(source, /正在恢复本机 Codex 会话/);
@@ -70,14 +70,14 @@ test('automatically retries a transient Codex session database read failure', as
 });
 
 test('checks official-client compatibility after every public Web connection', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
   assert.match(source, /addEventListener\('open',[\s\S]*loadCompatibility\(\)/);
   assert.match(source, /rpc\('compatibility\.status\.get'\)/);
   assert.match(source, /官方客户端版本不兼容/);
 });
 
 test('treats a stopped CDP transport as recoverable instead of a missing task', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /CDP\.\*\(\?:尚未运行\|未启动\|not running\)/);
   assert.match(source, /官方同步正在后台恢复，恢复后会自动重新打开当前任务/);
@@ -86,8 +86,8 @@ test('treats a stopped CDP transport as recoverable instead of a missing task', 
 
 test('disables the composer and explains when official Codex quota reaches zero', async () => {
   const [source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(source, /usageExhausted = exhausted/);
@@ -98,7 +98,7 @@ test('disables the composer and explains when official Codex quota reaches zero'
 });
 
 test('refreshes remaining usage whenever a mobile page reconnects or becomes active', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /addEventListener\('pageshow',[\s\S]*loadUsage\(true\)/);
   assert.match(source, /addEventListener\('focus',[\s\S]*loadUsage\(true\)/);
@@ -106,7 +106,7 @@ test('refreshes remaining usage whenever a mobile page reconnects or becomes act
 });
 
 test('does not let a stale official quota block external model providers', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /result\?\.enforced === false/);
   assert.match(source, /usageExhausted = false/);
@@ -116,9 +116,9 @@ test('does not let a stale official quota block external model providers', async
 
 test('renders remaining usage as a compact green and white ring without a percent suffix', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /class="usage-ring"[\s\S]*id="usagePercent"/);
@@ -132,9 +132,9 @@ test('renders remaining usage as a compact green and white ring without a percen
 
 test('shows the current official model beside remaining usage and updates it from live preferences', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
   assert.match(markup, /id="showModel"[\s\S]*id="modelBadge"/);
   assert.match(source, /preferences\.updated[\s\S]*applyIntelligenceSnapshot/);
@@ -144,7 +144,7 @@ test('shows the current official model beside remaining usage and updates it fro
 });
 
 test('formats ISO quota reset timestamps in the browser local timezone', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
 
   assert.match(source, /function formatUsageResetTime\(value\)/);
   assert.match(source, /new Intl\.DateTimeFormat\('zh-CN', options\)/);
@@ -154,8 +154,8 @@ test('formats ISO quota reset timestamps in the browser local timezone', async (
 
 test('renders task activity as a thin flowing strip below the navigation bar', async () => {
   const [markup, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /class="header-actions"[\s\S]*<\/div>\s*<div id="runStatus" class="run-status hidden"/);
@@ -166,8 +166,8 @@ test('renders task activity as a thin flowing strip below the navigation bar', a
 
 test('links each official model to only its supported reasoning effort slider steps', async () => {
   const [markup, source] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
   ]);
 
   assert.match(markup, /id="modelSlider"[\s\S]*id="effortSlider"/);
@@ -181,7 +181,7 @@ test('links each official model to only its supported reasoning effort slider st
 });
 
 test('does not let a cached model response overwrite a newer official-client push', async () => {
-  const source = await readFile(path.resolve('src/remote-ui/remote.js'), 'utf8');
+  const source = await readFile(path.resolve('frontend/src/remote/remote.js'), 'utf8');
   assert.match(source, /let intelligenceRevision = 0/);
   assert.match(source, /message\.type === 'preferences\.updated'[\s\S]*intelligenceRevision \+= 1/);
   assert.match(source, /result\?\.cached && intelligenceRevision !== requestRevision/);
@@ -189,8 +189,8 @@ test('does not let a cached model response overwrite a newer official-client pus
 
 test('lets a historical user message be edited and sent as a new turn', async () => {
   const [source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(source, /appendHistoryResendAction\(node, text, attachments\.length\)/);
@@ -202,9 +202,9 @@ test('lets a historical user message be edited and sent as a new turn', async ()
 
 test('switches between text and voice input without squeezing the composer and rebuilds interim text without duplicates', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /class="composer-box"[\s\S]*id="composerMode"[\s\S]*id="prompt"[\s\S]*id="voiceInput"[\s\S]*id="voiceModeToggle"/);
@@ -232,9 +232,9 @@ test('switches between text and voice input without squeezing the composer and r
 
 test('shows selected attachments in a full-width tray and opens image previews', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /id="filePicker"[\s\S]*id="attachmentTray"[\s\S]*id="attachFiles"[\s\S]*class="composer-box"/);
@@ -258,7 +258,7 @@ test('shows selected attachments in a full-width tray and opens image previews',
 });
 
 test('renders message attachments as compact side-by-side thumbnails', async () => {
-  const stylesheet = await readFile(path.resolve('src/remote-ui/remote.css'), 'utf8');
+  const stylesheet = await readFile(path.resolve('frontend/src/remote/remote.css'), 'utf8');
   assert.match(stylesheet, /\.message-attachments \{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;[\s\S]*gap: 6px/);
   assert.match(stylesheet, /\.message-attachment\.image \{[\s\S]*width: 112px;[\s\S]*height: 112px;[\s\S]*flex: 0 0 112px/);
   assert.match(stylesheet, /@media \(max-width: 700px\) \{[\s\S]*\.message-attachment\.image \{[\s\S]*width: 104px;[\s\S]*height: 104px/);
@@ -266,9 +266,9 @@ test('renders message attachments as compact side-by-side thumbnails', async () 
 
 test('offers official Plan and Goal modes and keeps queued mode metadata', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
   assert.match(markup, /id="modeGoal"[\s\S]*目标模式[\s\S]*id="modePlan"[\s\S]*计划模式/);
   assert.match(source, /selectTurnMode\('plan'\)/);
@@ -283,7 +283,7 @@ test('offers official Plan and Goal modes and keeps queued mode metadata', async
 });
 
 test('locks sending before weak-network checks and attaches an idempotency key', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
   assert.match(source, /sending = true; refreshComposerAvailability\(\); renderAttachmentTray\(\);\s*await loadUsage\(true\)/);
   assert.match(source, /rpc\('turn\.start', \{[^}]*clientRequestId \}\)/);
   assert.match(source, /rpc\('turn\.queue', \{[^}]*clientRequestId \}\)/);
@@ -291,7 +291,7 @@ test('locks sending before weak-network checks and attaches an idempotency key',
 });
 
 test('deduplicates local and official queue representations by message content and attachments', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
   assert.match(source, /function queueItemFingerprint\(item\)/);
   assert.match(source, /replace\(\/\\s\+\/g, ' '\)\.trim\(\)/);
   assert.match(source, /function mergeQueueItems\(\.\.\.groups\)/);
@@ -300,14 +300,14 @@ test('deduplicates local and official queue representations by message content a
 });
 
 test('periodically reconciles a long-open task list with the official client', async () => {
-  const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
+  const source = await readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8');
   assert.match(source, /setInterval\(\(\) => \{[\s\S]*connectionOnline && !threadOpening[\s\S]*loadThreads\(\)[\s\S]*10_000/);
 });
 
 test('groups Codex worktree tasks under their canonical project and marks them visually', async () => {
   const [source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
   assert.match(source, /function worktreeProjectInfo\(value\)/);
   assert.match(source, /worktrees\\\/\[\^\/\]\+\\\/\(\[\^\/\]\+\)/);
@@ -318,8 +318,8 @@ test('groups Codex worktree tasks under their canonical project and marks them v
 });
 
 test('hides task rename controls, shows running task activity and filters internal git directives', async () => {
-  const script = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
-  const styles = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.css'), 'utf8');
+  const script = await readFile(path.join(projectDirectory, 'frontend/src/remote/remote.js'), 'utf8');
+  const styles = await readFile(path.join(projectDirectory, 'frontend/src/remote/remote.css'), 'utf8');
   assert.doesNotMatch(script, /renameTask = renameActionButton/);
   assert.match(script, /thread-running-indicator/);
   assert.match(styles, /@keyframes thread-running-spin/);
@@ -329,7 +329,7 @@ test('hides task rename controls, shows running task activity and filters intern
 test('allows local blob image previews through both Web security policies', async () => {
   const [localServer, publicRelay] = await Promise.all([
     readFile(path.join(projectDirectory, 'src', 'remote', 'remote-codex-server.ts'), 'utf8'),
-    readFile(path.join(projectDirectory, 'deploy', 'relay-server', 'server.mjs'), 'utf8'),
+    readFile(path.join(projectDirectory, 'backend', 'src', 'server.mjs'), 'utf8'),
   ]);
 
   assert.match(localServer, /img-src 'self' data: blob:/);
@@ -338,9 +338,9 @@ test('allows local blob image previews through both Web security policies', asyn
 
 test('creates a new task only after the user chooses an explicit project directory', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /id="newThreadDialog"[\s\S]*选择项目目录/);
@@ -364,9 +364,9 @@ test('creates a new task only after the user chooses an explicit project directo
 
 test('opens the most recently visited task automatically and locks mobile zoom', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
   assert.match(markup, /maximum-scale=1, user-scalable=no, viewport-fit=cover/);
   assert.match(source, /gpttool:recent-thread:/);
@@ -379,9 +379,9 @@ test('opens the most recently visited task automatically and locks mobile zoom',
 
 test('renames official task titles without offering project-directory rename', async () => {
   const [markup, source, stylesheet] = await Promise.all([
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'index.html'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8'),
-    readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.css'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'index.html'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.js'), 'utf8'),
+    readFile(path.join(projectDirectory, 'frontend', 'src', 'remote', 'remote.css'), 'utf8'),
   ]);
 
   assert.match(markup, /id="renameDialog"[\s\S]*重命名任务[\s\S]*id="renameInput"/);

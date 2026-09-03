@@ -13,3 +13,5 @@ location /remote/ {
     proxy_send_timeout 3600s;
     client_max_body_size 512k;
 }
+# Legacy proxy-all mode requires ASTERGATE_SERVE_FRONTEND=true.
+# New installations should use nginx-separated.conf.example instead.

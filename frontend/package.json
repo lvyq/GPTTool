@@ -1,0 +1,14 @@
+{
+  "name": "gpttool-web",
+  "version": "0.2.10",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && node scripts/dev.mjs",
+    "check": "node --check src/remote/remote.js && node --check src/gateway/gateway.js && node --check src/admin/admin.js"
+  },
+  "devDependencies": { "esbuild": "^0.25.0", "jsqr": "^1.4.0" }
+}

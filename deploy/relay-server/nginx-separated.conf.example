@@ -1,0 +1,49 @@
+# Include INSIDE an existing HTTPS server {}. Keep nginx mime.types enabled.
+# frontend/dist contents -> /srv/gpttool-web/{gateway,admin,remote}/
+# backend/dist contents -> /opt/gpttool-relay/ (listens on loopback:8790)
+# ASTERGATE_PUBLIC_URL=https://gpttool.example.com/remote/
+# ASTERGATE_SERVE_FRONTEND=false
+# Change EVERY /remote/ prefix together if using another public path.
+add_header X-Content-Type-Options nosniff always;
+add_header X-Frame-Options DENY always;
+add_header Referrer-Policy no-referrer always;
+add_header Cache-Control no-store always;
+add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ws: wss:; style-src 'self'; script-src 'self'; img-src 'self' data: blob:" always;
+
+location = /remote { return 302 /remote/; }
+location = /remote/healthz { proxy_pass http://127.0.0.1:8790/healthz; }
+location ^~ /remote/api/ {
+    proxy_pass http://127.0.0.1:8790/api/;
+    proxy_set_header Host $host;
+    # Preserve the client's Origin/Cookie. Never replace Origin with $host.
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+location ~ ^/remote/(agent|device/[^/]+/ws)$ {
+    proxy_pass http://127.0.0.1:8790/$1$is_args$args;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+location = /remote/ { alias /srv/gpttool-web/gateway/index.html; default_type text/html; }
+location = /remote/admin { return 302 /remote/admin/; }
+location = /remote/admin/ { alias /srv/gpttool-web/admin/index.html; default_type text/html; }
+location ~ ^/remote/admin/(index\.html|admin\.js|admin\.css)$ {
+    alias /srv/gpttool-web/admin/$1;
+}
+location ~ ^/remote/device/[^/]+$ { return 302 $uri/; }
+location ~ ^/remote/device/[^/]+/$ {
+    alias /srv/gpttool-web/remote/index.html;
+    default_type text/html;
+}
+location ~ ^/remote/device/[^/]+/(index\.html|remote\.(js|css)|web-version\.json|gpttool-logo\.png|apple-touch-icon\.png)$ {
+    alias /srv/gpttool-web/remote/$1;
+}
+location ~ ^/remote/(index\.html|gateway\.(js|css)|qr-decoder\.js|gpttool-logo\.png|apple-touch-icon\.png)$ {
+    alias /srv/gpttool-web/gateway/$1;
+}
+location /remote/ { return 404; }

@@ -6,6 +6,8 @@ GPTTool 把“远程入口、桌面编排、Codex 适配、任务呈现”分成
 
 ## 组件
 
+工程已拆分：`frontend/` 独立构建静态页面，`backend/` 独立构建 API/WSS 服务，根 `src/` 保留 Electron 设备端。开发命令、部署边界和旧版本迁移详见[前后端分离指南](FRONTEND_BACKEND.zh-CN.md)。
+
 ### Desktop（Electron）
 
 - 桌面控制台、托盘、窗口与自动更新；
@@ -24,7 +26,7 @@ GPTTool 把“远程入口、桌面编排、Codex 适配、任务呈现”分成
 
 ### Remote Web UI
 
-纯静态 HTML/CSS/JavaScript，通过桌面端或 Relay 提供。浏览器只接收当前用户绑定设备的数据，不接触官方登录令牌或 CDP 调试端口。
+纯静态 HTML/CSS/JavaScript，包含远程消息页、账户/设备门户和管理页；由 Nginx 独立提供。桌面安装包复用远程消息页，Relay 默认只提供 API/WSS。浏览器只接收当前用户绑定设备的数据，不接触官方登录令牌或 CDP 调试端口。
 
 ### Relay
 

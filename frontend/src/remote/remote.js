@@ -1,4 +1,19 @@
-(() => {
+(async () => {
+  // Static hosting cannot perform the old server-side login redirect. The
+  // backend still enforces session/ownership on every API and WS connection.
+  const publicDeviceRoute = window.location.pathname.match(/^(.*\/)device\/[^/]+\/?$/);
+  if (publicDeviceRoute) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3_000);
+    try {
+      const response = await fetch(`${publicDeviceRoute[1]}api/session`, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+      if (response.ok && !(await response.json()).authenticated) {
+        window.location.replace(publicDeviceRoute[1]);
+        return;
+      }
+    } catch { /* A temporary API outage is handled by the connection retry UI. */ }
+    finally { clearTimeout(timer); }
+  }
   const $ = (id) => document.getElementById(id);
   const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showModel', 'modelBadge', 'modelPopover', 'modelDetail', 'modelEffortDetail', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
   ids.push('speedSelect', 'speedStatus', 'modelSettingsDialog', 'closeModelSettings');

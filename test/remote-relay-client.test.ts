@@ -17,7 +17,7 @@ test('isolates a public browser by account and relays it to the selected device'
   const stateDirectory = await mkdtemp(path.join(tmpdir(), 'astergate-multitenant-'));
   const database = path.join(stateDirectory, 'state.json'); const deviceId = randomUUID();
   const deviceToken = 'device-token-0123456789-0123456789'; const localToken = 'local-token-0123456789-0123456789'; const password = 'owner-password-2026';
-  const admin = (args: string[]) => execFileSync(process.execPath, ['deploy/relay-server/admin.mjs', ...args], { env: { ...process.env, ASTERGATE_DATABASE: database } }).toString();
+  const admin = (args: string[]) => execFileSync(process.execPath, ['backend/src/admin.mjs', ...args], { env: { ...process.env, ASTERGATE_DATABASE: database } }).toString();
   const user = JSON.parse(admin(['create-user', 'owner', password])) as { id: string };
   admin(['import-device', user.id, deviceId, 'Test Mac', deviceToken]);
   admin(['create-user', 'another-user', 'another-password-2026']);
@@ -36,9 +36,9 @@ test('isolates a public browser by account and relays it to the selected device'
     await rm(stateDirectory, { recursive: true, force: true });
   });
 
-  child = spawn(process.execPath, ['deploy/relay-server/server.mjs'], {
+  child = spawn(process.execPath, ['backend/src/server.mjs'], {
     cwd: path.resolve('.'), stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ASTERGATE_RELAY_PORT: String(relayPort), ASTERGATE_ASSETS_DIR: path.resolve('src/remote-ui'), ASTERGATE_GATEWAY_DIR: path.resolve('deploy/relay-server/gateway'), ASTERGATE_PUBLIC_URL: `http://127.0.0.1:${relayPort}/`, ASTERGATE_DATABASE: database },
+    env: { ...process.env, ASTERGATE_SERVE_FRONTEND: 'true', ASTERGATE_RELAY_PORT: String(relayPort), ASTERGATE_ASSETS_DIR: path.resolve('frontend/src/remote'), ASTERGATE_GATEWAY_DIR: path.resolve('frontend/src/gateway'), ASTERGATE_PUBLIC_URL: `http://127.0.0.1:${relayPort}/`, ASTERGATE_DATABASE: database },
   });
   await waitForOnlineDevices(relayPort, 0);
 
@@ -98,13 +98,14 @@ test('supports self-service registration, automatic login, validation and accoun
     await rm(stateDirectory, { recursive: true, force: true });
   });
 
-  child = spawn(process.execPath, ['deploy/relay-server/server.mjs'], {
+  child = spawn(process.execPath, ['backend/src/server.mjs'], {
     cwd: path.resolve('.'), stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
       ASTERGATE_RELAY_PORT: String(relayPort),
-      ASTERGATE_ASSETS_DIR: path.resolve('src/remote-ui'),
-      ASTERGATE_GATEWAY_DIR: path.resolve('deploy/relay-server/gateway'),
+      ASTERGATE_SERVE_FRONTEND: 'true',
+      ASTERGATE_ASSETS_DIR: path.resolve('frontend/src/remote'),
+      ASTERGATE_GATEWAY_DIR: path.resolve('frontend/src/gateway'),
       ASTERGATE_PUBLIC_URL: `http://127.0.0.1:${relayPort}/`,
       ASTERGATE_DATABASE: database,
     },

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { PersistentSessionStore } from '../deploy/relay-server/session-store.mjs';
+import { PersistentSessionStore } from '../backend/src/session-store.mjs';
 
 test('relay sessions survive a process restart and expired sessions are removed', () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'gpttool-relay-session-'));

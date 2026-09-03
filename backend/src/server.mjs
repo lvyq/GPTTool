@@ -6,9 +6,11 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { createStorage } from './storage.mjs';
 
 const port = integerEnv('ASTERGATE_RELAY_PORT', 8790);
-const assetsDirectory = requiredEnv('ASTERGATE_ASSETS_DIR');
-const gatewayDirectory = process.env.ASTERGATE_GATEWAY_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), 'gateway');
-const adminDirectory = process.env.ASTERGATE_ADMIN_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), 'admin');
+// API-only by default. Explicit compatibility mode supports existing proxy-all deployments.
+const serveFrontend = process.env.ASTERGATE_SERVE_FRONTEND === 'true';
+const assetsDirectory = serveFrontend ? requiredEnv('ASTERGATE_ASSETS_DIR') : '';
+const gatewayDirectory = process.env.ASTERGATE_GATEWAY_DIR || path.join(path.dirname(assetsDirectory), 'gateway');
+const adminDirectory = process.env.ASTERGATE_ADMIN_DIR || path.join(path.dirname(assetsDirectory), 'admin');
 const publicUrl = new URL(requiredEnv('ASTERGATE_PUBLIC_URL'));
 const allowedOrigin = publicUrl.origin;
 const { store, sessions, backend: storageBackend } = await createStorage();
@@ -154,6 +156,7 @@ async function handleHttp(request, response) {
     activeBrowsers: browsers.size,
   });
   if (requestUrl.pathname.startsWith('/api/')) return handleApi(request, response, requestUrl);
+  if (!serveFrontend) return textResponse(response, 404, 'API service: frontend is served separately');
 
   if (requestUrl.pathname === '/admin') return redirect(response, `${publicUrl.pathname.replace(/\/$/, '')}/admin/`);
   if (requestUrl.pathname.startsWith('/admin/')) {

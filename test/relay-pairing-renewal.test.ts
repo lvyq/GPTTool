@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 // @ts-expect-error The relay runtime is native ESM JavaScript deployed as-is.
-import { RelayStore } from '../deploy/relay-server/store.mjs';
+import { RelayStore } from '../backend/src/store.mjs';
 
 test('an already-bound device can securely renew pairing for the same account', () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'gpttool-pairing-'));
