@@ -4,6 +4,18 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-09-03
+
+### Added
+
+- Open model, reasoning-effort and response-speed settings directly from the header model badge.
+- Read and apply official response-speed options, including the compact Fast-mode checkbox, with confirmation after changes.
+- Clearly disable unavailable speed settings in standalone and external-provider modes; refresh speed choices after a model change.
+
+### Fixed
+
+- Support the updated official compact model radio list and read the exact reasoning-slider steps without guessing their order or entering locked options.
+
 ## [0.2.8] - 2026-09-03
 
 ### Fixed

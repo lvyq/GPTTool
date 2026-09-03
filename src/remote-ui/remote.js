@@ -1,6 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showModel', 'modelBadge', 'modelPopover', 'modelDetail', 'modelEffortDetail', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
+  ids.push('speedSelect', 'saveSpeed', 'speedStatus');
   const ui = Object.fromEntries(ids.map((id) => [id, $(id)]));
   const shell = document.querySelector('.shell');
   let socket;
@@ -76,6 +77,8 @@
   let intelligenceModels = [];
   let intelligenceSnapshot;
   let intelligenceDirty = false;
+  let speedSnapshot;
+  let speedRevision = 0;
   let intelligenceRevision = 0;
   let modelLoadedAt = 0;
   let voiceRecognition;
@@ -162,7 +165,11 @@
       renderComposerInputMode();
     }
     ui.showTaskSettings.addEventListener('click', showTaskSettings);
-    ui.showModel.addEventListener('click', toggleModelPopover);
+    ui.showModel.addEventListener('click', showTaskSettings);
+    ui.saveSpeed.addEventListener('click', saveSpeed);
+    ui.speedSelect.addEventListener('change', () => {
+      ui.saveSpeed.disabled = !speedSnapshot?.available || ui.speedSelect.value === speedSnapshot.current;
+    });
     ui.showUsage.addEventListener('click', toggleUsagePopover);
     ui.closeTaskSettings.addEventListener('click', () => ui.taskSettingsDialog.close());
     ui.taskSettingsDialog.addEventListener('click', (event) => { if (event.target === ui.taskSettingsDialog) ui.taskSettingsDialog.close(); });
@@ -599,9 +606,56 @@
   }
 
   async function showTaskSettings() {
-    ui.taskSettingsDialog.showModal();
+    setModelPopover(false);
+    setUsagePopover(false);
+    if (!ui.taskSettingsDialog.open) ui.taskSettingsDialog.showModal();
+    ui.taskSettingsDialog.scrollTop = 0;
     intelligenceDirty = false;
-    await Promise.all([loadAutoApproval(), loadIntelligenceSettings()]);
+    await Promise.all([loadAutoApproval(), loadIntelligenceSettings(), loadSpeedSettings()]);
+  }
+
+  async function loadSpeedSettings() {
+    const revision = ++speedRevision;
+    speedSnapshot = undefined;
+    ui.speedSelect.disabled = true;
+    ui.saveSpeed.disabled = true;
+    ui.speedSelect.replaceChildren(new Option('正在读取…', ''));
+    ui.speedStatus.textContent = '正在读取官方速度选项…';
+    try {
+      const result = await rpc('composer.speed.get');
+      if (revision !== speedRevision) return;
+      speedSnapshot = result;
+      ui.speedSelect.replaceChildren(...(result.options || []).map(item => new Option(item.label, item.value)));
+      if (result.available && result.options?.some(item => item.value === result.current)) {
+        ui.speedSelect.value = result.current;
+        ui.speedSelect.disabled = false;
+        ui.speedStatus.textContent = `当前：${ui.speedSelect.selectedOptions[0]?.textContent || result.current} · ${result.model}`;
+      } else {
+        ui.speedSelect.replaceChildren(new Option('暂不可用', ''));
+        ui.speedStatus.textContent = result.message || '当前模式暂不支持速度设置';
+      }
+    } catch (error) {
+      if (revision !== speedRevision) return;
+      ui.speedSelect.replaceChildren(new Option('暂不可用', ''));
+      ui.speedStatus.textContent = /未知|unknown|unsupported/i.test(error.message)
+        ? '请更新桌面客户端以启用速度设置' : error.message;
+    }
+  }
+
+  async function saveSpeed() {
+    if (!speedSnapshot?.available) return;
+    ui.saveSpeed.disabled = true;
+    ui.speedSelect.disabled = true;
+    ui.speedStatus.textContent = '正在应用速度…';
+    try {
+      await rpc('composer.speed.set', { speed: ui.speedSelect.value, model: speedSnapshot.model });
+      await loadSpeedSettings();
+      toast('响应速度已更新');
+    } catch (error) {
+      ui.speedStatus.textContent = error.message;
+      ui.speedSelect.disabled = false;
+      ui.saveSpeed.disabled = false;
+    }
   }
 
   function toggleModelPopover() {
@@ -641,7 +695,7 @@
       ui.saveIntelligence.disabled = true;
     }
     try {
-      const result = await rpc('composer.preferences.get');
+      const result = await rpc('composer.preferences.inspect').catch(() => rpc('composer.preferences.get'));
       // The server intentionally answers from its persistent cache first and
       // refreshes the official client in the background. A fast live push can
       // arrive before this cached RPC response; never let that old response
@@ -663,6 +717,7 @@
       applyIntelligenceSnapshot(result, true);
       ui.intelligenceStatus.textContent = `已应用：${result.model || ui.modelValue.textContent} · ${result.effortLabel || result.effort || ui.effortValue.textContent}`;
       toast('模型与推理强度已更新');
+      await loadSpeedSettings();
     } catch (error) {
       ui.intelligenceStatus.textContent = error.message;
     } finally {
@@ -810,6 +865,11 @@
 
   function selectModelSliderStep() {
     intelligenceDirty = true;
+    speedRevision += 1;
+    speedSnapshot = undefined;
+    ui.speedSelect.disabled = true;
+    ui.saveSpeed.disabled = true;
+    ui.speedStatus.textContent = '请先应用模型设置，再选择该模型支持的速度';
     ui.modelSelect.selectedIndex = Math.max(0, Math.min(ui.modelSelect.options.length - 1, Number(ui.modelSlider.value)));
     renderDiscreteSlider(ui.modelSelect, ui.modelSlider, ui.modelValue, ui.modelTicks);
     configureEffortsForSelectedModel();
@@ -882,7 +942,7 @@
     const compact = /^(sol|terra|luna)$/i.test(family) ? family : normalized;
     ui.modelBadge.textContent = compact.slice(0, 5);
     ui.modelBadge.classList.toggle('long', compact.length > 3);
-    ui.showModel.title = `当前模型：${model}`;
+    ui.showModel.title = `当前模型：${model} · 点击设置模型、强度与速度`;
     ui.modelDetail.textContent = `当前模型：${model}`;
     const effort = result.effortLabel || result.effort || '默认强度';
     ui.modelEffortDetail.textContent = `${effort}${result.cached ? ' · 缓存，正在后台同步' : ' · 已与本机设置同步'}`;

@@ -7,6 +7,17 @@ import { fileURLToPath } from 'node:url';
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectDirectory = path.join(testDirectory, '..');
 
+test('model badge opens settings directly and speed is loaded only on explicit settings actions', async () => {
+  const source = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
+  const markup = await readFile(path.join(projectDirectory, 'src/remote-ui/index.html'), 'utf8');
+  assert.match(source, /ui.showModel.addEventListener\('click', showTaskSettings\)/);
+  assert.match(markup, /aria-label="设置模型、强度与速度"[^>]*aria-haspopup="dialog"/);
+  assert.match(markup, /id="speedSelect"/);
+  assert.match(source, /await rpc\('composer.speed.set', \{ speed: ui.speedSelect.value, model: speedSnapshot.model \}\)/);
+  assert.match(source, /if \(revision !== speedRevision\) return/);
+  assert.match(source, /请先应用模型设置，再选择该模型支持的速度/);
+});
+
 test('locks a newly opened task to the latest message until the user scrolls', async () => {
   const source = await readFile(path.join(projectDirectory, 'src', 'remote-ui', 'remote.js'), 'utf8');
 

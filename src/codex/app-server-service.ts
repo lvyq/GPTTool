@@ -82,6 +82,9 @@ export class AppServerCodexService {
       case 'approval/auto/set':
         this.#autoApprove = input.enabled === true;
         return { enabled: this.#autoApprove } as T;
+      case 'composer/speed/get': return { available: false, options: [], message: '独立服务暂不支持速度设置，请使用官方同步模式' } as T;
+      case 'composer/speed/set': throw new Error('独立服务暂不支持速度设置');
+      case 'composer/preferences/inspect':
       case 'composer/preferences/get': return await this.#preferences() as T;
       case 'composer/preferences/set':
         this.#model = stringValue(input.model);

@@ -274,6 +274,25 @@ export class CodexService {
       case 'approval/auto/set':
         this.#autoApprove = input.enabled === true;
         return { enabled: this.#autoApprove } as T;
+      case 'composer/preferences/inspect': {
+        await this.#refreshProvider();
+        if (this.#provider.external) return providerComposerPreferences(this.#provider) as T;
+        const snapshot = await this.#composerPreferences();
+        const compact = await this.#cdp.compactComposerPreferences();
+        if (!compact) return snapshot as T;
+        return { ...snapshot, ...compact, models: snapshot.models.map(model => model.value === compact.model ? { ...model, efforts: compact.efforts, effort: compact.effort } : model) } as T;
+      }
+      case 'composer/speed/get':
+      case 'composer/speed/set':
+        await this.#refreshProvider();
+        if (this.#provider.external) {
+          if (method.endsWith('/set')) throw new Error('第三方服务的速度由服务商配置管理');
+          return { available: false, options: [], message: '第三方服务的速度由服务商配置管理' } as T;
+        }
+        return await this.#cdp.composerSpeed(
+          method.endsWith('/set') ? stringValue(input.speed) : undefined,
+          stringValue(input.model),
+        ) as T;
       case 'composer/preferences/get':
         await this.#refreshProvider();
         if (this.#provider.external) return providerComposerPreferences(this.#provider) as T;
@@ -286,10 +305,11 @@ export class CodexService {
       case 'composer/preferences/set':
         await this.#refreshProvider();
         try {
-          return await this.#cdp.setComposerPreferences({
+          await this.#cdp.setComposerPreferences({
             model: stringValue(input.model) || undefined,
             effort: stringValue(input.effort) || undefined,
-          }) as T;
+          });
+          return await this.#composerPreferences() as T;
         } catch (error) {
           if (!this.#provider.external) throw error;
           throw new Error(`${this.#provider.name} 的模型与推理强度由 Codex Provider 或中转工具管理；修改后请重新启动官方客户端`);
@@ -618,10 +638,10 @@ export class CodexService {
       });
       const rendererCurrent = { value: renderer.model, label: renderer.model };
       const current = mergedModels.find((model) => modelMatchesRenderer(model, rendererCurrent));
-      const currentEfforts = current?.efforts.length
-        ? current.efforts
-        : renderer.efforts.length
-          ? renderer.efforts
+      const currentEfforts = renderer.efforts.length
+        ? renderer.efforts
+        : current?.efforts.length
+          ? current.efforts
           : renderer.effort
             ? [{ value: renderer.effort, label: renderer.effortLabel || reasoningEffortLabel(renderer.effort) }]
             : [];

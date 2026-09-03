@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
+import { composerSpeedExpression, type ComposerSpeed } from './composer-speed.ts';
+import { COMPACT_COMPOSER_EXPRESSION, compactEffortIndex, type CompactComposer } from './composer-compact.ts';
 import { BUILTIN_CDP_RULES, type CdpOperationRules } from './cdp-rules.ts';
 
 interface CdpTarget {
@@ -373,7 +375,7 @@ export class CdpClient extends EventEmitter {
         effortLabel: String(viewport.querySelector('[class*="ModelPickerTriggerEffortLabel"]')?.textContent || '').trim()
       };
     })()`);
-    return { ...current, models: [], efforts: [] };
+    return { ...current, models: [], efforts: this.#composerPreferencesCache?.model === current.model ? this.#composerPreferencesCache.efforts : [] };
   }
 
   async #readComposerPreference(): Promise<Omit<ComposerPreferences, 'models'>> {
@@ -403,6 +405,8 @@ export class CdpClient extends EventEmitter {
   }
 
   async setComposerPreferences(input: { model?: string; effort?: string }): Promise<ComposerPreferences> {
+    const compact = await this.compactComposerPreferences(input);
+    if (compact) return compact;
     const original = await this.#readComposerPreference();
     let current = original;
     try {
@@ -780,6 +784,142 @@ export class CdpClient extends EventEmitter {
     if (clicked) return;
     await this.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
     await this.command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+  }
+
+  async compactComposerPreferences(input?: { model?: string; effort?: string }): Promise<ComposerPreferences | null> {
+    await this.#speedMenuOpen(false);
+    const original = await this.visibleComposerPreference();
+    let before: CompactComposer | null = null;
+    try {
+      await this.#speedMenuOpen(true);
+      before = await this.evaluate<CompactComposer | null>(COMPACT_COMPOSER_EXPRESSION);
+      if (!before) return null;
+      if (input) {
+        const model = input.model || original.model;
+        const effort = input.effort || original.effort;
+        // Keep automatic model selection when its exact current model/effort
+        // is already one of the available steps. Never infer a slider index.
+        if (compactEffortIndex(before, model, effort) < 0 || model !== original.model) {
+          if (!before.models.includes(model)) throw new Error('官方客户端当前不支持这个模型');
+          await this.#selectCompactModel(model);
+        }
+        await this.#selectCompactEffort(model, effort);
+      }
+      const state = await this.evaluate<CompactComposer | null>(COMPACT_COMPOSER_EXPRESSION);
+      await this.#speedMenuOpen(false);
+      const current = await this.visibleComposerPreference();
+      if (input && ((input.model && current.model !== input.model) || (input.effort && current.effort !== input.effort))) {
+        throw new Error('模型设置尚未得到官方确认，请重新读取');
+      }
+      const efforts = (state?.options || []).filter(option => compactEffortIndex(state!, current.model, option.effort) >= 0)
+        .map(option => ({ value: option.effort, label: OFFICIAL_REASONING_EFFORTS.find(item => item.value === option.effort)?.label || option.effort }))
+        .filter((option, index, values) => values.findIndex(item => item.value === option.value) === index);
+      const result = { ...current, efforts, models: [{ value: current.model, label: current.model, efforts, effort: current.effort, effortLabel: current.effortLabel }] };
+      this.#composerPreferencesCache = result;
+      return result;
+    } catch (error) {
+      if (input && before) {
+        // Restore the prior explicit/default selection if an unsupported
+        // effort or a renderer change prevented the requested combination.
+        await this.#selectCompactModel(before.selection).then(() => this.#selectCompactEffort(original.model, original.effort)).catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      await this.#speedMenuOpen(false);
+    }
+  }
+
+  async #selectCompactModel(label: string): Promise<void> {
+    await this.#speedMenuOpen(false);
+    await this.#speedMenuOpen(true);
+    await this.evaluate(`document.querySelector('[data-model-picker-view-toggle="true"]')?.click()`);
+    await delay(350);
+    const selected = await this.evaluate<boolean>(`(() => {
+      const item = [...document.querySelectorAll('[role="menuitemradio"]')].find(node => !node.closest('[inert], [aria-hidden="true"]') && node.getAttribute('aria-disabled') !== 'true' && String(node.textContent || '').replace(/\\s+/g, ' ').trim() === ${JSON.stringify(label)});
+      if (!(item instanceof HTMLElement)) return false;
+      item.click(); return true;
+    })()`);
+    if (!selected) throw new Error('官方模型列表尚未加载或所选模型不可用');
+    await delay(160);
+    await this.#speedMenuOpen(false);
+    await this.#speedMenuOpen(true);
+  }
+
+  async #selectCompactEffort(model: string, effort: string): Promise<void> {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const state = await this.evaluate<CompactComposer | null>(COMPACT_COMPOSER_EXPRESSION);
+      const target = state ? compactEffortIndex(state, model, effort) : -1;
+      if (!state || target < 0) throw new Error('官方客户端当前不支持这个模型与推理强度组合');
+      if (target === state.index) return;
+      const next = state.index + (target > state.index ? 1 : -1);
+      if (state.options[next]?.locked) throw new Error('所选强度需要升级或额外授权，请在官方客户端处理');
+      const key = target > state.index ? 'ArrowRight' : 'ArrowLeft';
+      await this.evaluate(`document.querySelector('[data-reasoning-slider]')?.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }))`);
+      await delay(100);
+    }
+    throw new Error('官方推理强度设置未响应');
+  }
+
+  /** Explicit settings-panel request only; never used by background polling. */
+  async composerSpeed(wanted?: string, expectedModel?: string): Promise<ComposerSpeed> {
+    await this.#speedMenuOpen(false);
+    const original = await this.visibleComposerPreference();
+    if (!original.model) throw new Error('官方当前模型尚未加载，请稍后重试');
+    if (wanted !== undefined && original.model !== expectedModel) throw new Error('官方当前模型已变化，请重新读取速度选项');
+    try {
+      await this.#speedMenuOpen(true);
+      let entry = await this.evaluate(composerSpeedExpression('open'));
+      if (!entry) {
+        const toggle = await this.evaluate<boolean>(`!!document.querySelector('[data-model-picker-view-toggle="true"]')`);
+        if (toggle) {
+          await this.#clickElement('[data-model-picker-view-toggle="true"]');
+          entry = await this.evaluate(composerSpeedExpression('open'));
+        }
+      }
+      if (!entry) {
+        if (wanted !== undefined) throw new Error('当前模型没有可用的速度选项');
+        return { available: false, model: original.model, options: [], message: '当前模型或官方客户端暂未提供速度选项' };
+      }
+      const deadline = Date.now() + 1_500;
+      let result: ComposerSpeed | null = null;
+      while (!result && Date.now() < deadline) {
+        result = await this.evaluate<ComposerSpeed | null>(composerSpeedExpression('read'));
+        if (!result) await delay(80);
+      }
+      if (!result) throw new Error('官方速度菜单尚未加载，请重新打开设置');
+      if (wanted !== undefined && wanted !== result.current) {
+        const selector = await this.evaluate<string | null>(composerSpeedExpression('select', wanted));
+        if (!selector) throw new Error('官方客户端当前不支持所选速度');
+        await this.evaluate(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+        await delay(160);
+        await this.#speedMenuOpen(false);
+        const applied = await this.composerSpeed();
+        if (applied.model !== original.model || applied.current !== wanted) throw new Error('速度设置尚未得到官方确认，请重新读取');
+        return applied;
+      }
+      return { ...result, model: original.model };
+    } finally {
+      await this.#speedMenuOpen(false);
+    }
+  }
+
+  async #speedMenuOpen(open: boolean): Promise<void> {
+    if (!open) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const expanded = await this.evaluate<boolean>(`document.querySelector('[data-codex-intelligence-trigger="true"]')?.getAttribute('aria-expanded') === 'true'`);
+        if (!expanded) return;
+        await this.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await this.command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await delay(160);
+      }
+      return;
+    }
+    await this.evaluate(`(() => {
+      const trigger = document.querySelector('[data-codex-intelligence-trigger="true"]');
+      if (!(trigger instanceof HTMLElement)) throw new Error('官方模型选择器尚未加载');
+      if ((trigger.getAttribute('aria-expanded') === 'true') !== ${open}) trigger.click();
+    })()`);
+    await delay(160);
   }
 
   async #openIntelligenceMenu(): Promise<void> {

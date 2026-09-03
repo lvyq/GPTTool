@@ -40,6 +40,7 @@ interface ClientRequest {
   enabled?: boolean;
   model?: string;
   effort?: string;
+  speed?: string;
   mode?: string;
   clientRequestId?: string;
   attachmentIds?: string[];
@@ -478,6 +479,14 @@ export class RemoteCodexServer {
         return this.#setAutoApproval(message.enabled === true);
       case 'composer.preferences.get':
         return this.#composerPreferences();
+      case 'composer.preferences.inspect':
+        return this.#withOfficialSettings(() => this.options.codex.request('composer/preferences/inspect'));
+      case 'composer.speed.get':
+        return this.#withOfficialSettings(() => this.options.codex.request('composer/speed/get'));
+      case 'composer.speed.set':
+        return this.#withOfficialSettings(() => this.options.codex.request('composer/speed/set', {
+          speed: requiredString(message.speed, 'speed'), model: requiredString(message.model, 'model'),
+        }));
       case 'composer.preferences.set':
         return this.#setComposerPreferences(message.model, message.effort);
       case 'account.usage.get':
