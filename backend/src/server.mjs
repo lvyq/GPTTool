@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createStorage } from './storage.mjs';
+import { requireFunctionalValidation, VERIFIED_RULE_PRIORITY } from './rule-validation.mjs';
 
 const port = integerEnv('ASTERGATE_RELAY_PORT', 8790);
 // API-only by default. Explicit compatibility mode supports existing proxy-all deployments.
@@ -48,6 +49,7 @@ const adminFiles = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/admin.js', ['admin.js', 'text/javascript; charset=utf-8']],
   ['/admin.css', ['admin.css', 'text/css; charset=utf-8']],
+  ['/rules.css', ['rules.css', 'text/css; charset=utf-8']],
 ]);
 
 const server = createServer((request, response) => void handleHttp(request, response));
@@ -354,10 +356,13 @@ async function handleAdminApi(request, response, requestUrl, currentUser) {
 
 async function putCdpRule(response, body) {
   const rules = body.rules || body;
-  if (!rules || rules.schemaVersion !== 1 || typeof rules.id !== 'string' || !rules.selectors) return json(response, 400, { error: 'CDP 规则格式无效' });
+  try { requireFunctionalValidation(rules, body.platform); }
+  catch (error) { return json(response, 400, { error: error.message }); }
   if (typeof store.putCdpRules !== 'function') return json(response, 503, { error: '当前存储后端不支持云端 CDP 规则' });
-  await store.putCdpRules(rules, body.platform || 'all', body.priority || 0);
-  return json(response, 201, { ok: true, id: rules.id });
+  try {
+    await store.putCdpRules(rules, body.platform, VERIFIED_RULE_PRIORITY);
+    return json(response, 201, { ok: true, id: rules.id, priority: VERIFIED_RULE_PRIORITY, validated: true });
+  } catch (error) { return json(response, 400, { error: error.message }); }
 }
 
 async function configValue(key, fallback) {

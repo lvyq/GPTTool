@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
+import { requireFunctionalValidation, validPriority, VERIFIED_RULE_PRIORITY } from './rule-validation.mjs';
 import {
   hashPassword,
   verifyPassword,
@@ -82,22 +83,34 @@ export class PostgresRelayStore {
 
   async listCdpRules() {
     const { rows } = await this.pool.query(
-      `SELECT id, platform, payload, enabled, priority, updated_at AS "updatedAt"
+      `SELECT id, platform, payload, enabled, priority, uploaded_at AS "uploadedAt", updated_at AS "updatedAt"
        FROM cdp_rule_sets ORDER BY priority DESC, updated_at DESC`,
     );
     return rows.map((row) => ({
       id: row.id, platform: row.platform, enabled: row.enabled, priority: row.priority,
-      updatedAt: Number(row.updatedAt), exactVersion: row.payload?.exactOfficialVersion || '',
+      uploadedAt: row.uploadedAt == null ? null : Number(row.uploadedAt),
+      updatedAt: Number(row.updatedAt), validation: row.payload?.collector?.validation || null,
+      exactVersion: row.payload?.exactOfficialVersion || '',
       minVersion: row.payload?.minOfficialVersion || '', maxVersion: row.payload?.maxOfficialVersion || '',
       payload: row.payload,
     }));
   }
 
   async updateCdpRule(id, changes, actorId) {
+    if (changes.enabled !== undefined && typeof changes.enabled !== 'boolean') throw new Error('启用状态必须为布尔值');
+    const { rows } = await this.pool.query('SELECT payload, platform FROM cdp_rule_sets WHERE id = $1', [id]);
+    if (!rows[0]) throw new Error('规则不存在');
+    const platform = changes.platform ?? rows[0].platform;
+    if (!['all', 'darwin', 'win32'].includes(platform)) throw new Error('无效平台');
+    if (changes.rules || changes.enabled === true || (changes.platform !== undefined && changes.platform !== rows[0].platform) || Number(changes.priority) === VERIFIED_RULE_PRIORITY) {
+      requireFunctionalValidation(changes.rules || rows[0].payload, platform);
+    }
+    if (changes.rules && changes.rules.id !== id) throw new Error('编辑时不能更改规则 ID');
     const fields = []; const values = [];
     if (changes.enabled !== undefined) { values.push(Boolean(changes.enabled)); fields.push(`enabled = $${values.length}`); }
-    if (changes.priority !== undefined) { values.push(Number(changes.priority) || 0); fields.push(`priority = $${values.length}`); }
+    if (changes.priority !== undefined) { values.push(validPriority(changes.priority)); fields.push(`priority = $${values.length}`); }
     if (changes.platform !== undefined) { values.push(String(changes.platform || 'all').slice(0, 32)); fields.push(`platform = $${values.length}`); }
+    if (changes.rules) { values.push(JSON.stringify(changes.rules)); fields.push(`payload = $${values.length}::jsonb`); }
     if (!fields.length) throw new Error('没有可更新的字段');
     values.push(Date.now(), id); fields.push(`updated_at = $${values.length - 1}`);
     const result = await this.pool.query(`UPDATE cdp_rule_sets SET ${fields.join(', ')} WHERE id = $${values.length}`, values);
@@ -172,11 +185,13 @@ export class PostgresRelayStore {
   }
 
   async putCdpRules(rules, platform = 'all', priority = 0) {
+    requireFunctionalValidation(rules, platform);
+    validPriority(priority);
     await this.pool.query(
-      `INSERT INTO cdp_rule_sets (id, platform, payload, enabled, priority, updated_at)
-       VALUES ($1, $2, $3::jsonb, TRUE, $4, $5)
+      `INSERT INTO cdp_rule_sets (id, platform, payload, enabled, priority, updated_at, uploaded_at)
+       VALUES ($1, $2, $3::jsonb, TRUE, $4, $5, $5)
        ON CONFLICT (id) DO UPDATE SET platform = EXCLUDED.platform, payload = EXCLUDED.payload,
-       enabled = TRUE, priority = EXCLUDED.priority, updated_at = EXCLUDED.updated_at`,
+       enabled = TRUE, priority = EXCLUDED.priority, updated_at = EXCLUDED.updated_at, uploaded_at = EXCLUDED.uploaded_at`,
       [rules.id, platform || 'all', JSON.stringify(rules), Number(priority) || 0, Date.now()],
     );
     return rules;
@@ -493,6 +508,8 @@ async function initializeSchema(pool) {
       enabled BOOLEAN NOT NULL DEFAULT TRUE, priority INTEGER NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL
     )`,
     'CREATE INDEX IF NOT EXISTS cdp_rule_sets_lookup ON cdp_rule_sets(enabled, platform, priority DESC, updated_at DESC)',
+    // Historical upload times were not recorded separately; leave them unknown.
+    'ALTER TABLE cdp_rule_sets ADD COLUMN IF NOT EXISTS uploaded_at BIGINT NULL',
     `CREATE TABLE IF NOT EXISTS system_config (
       config_key VARCHAR(96) PRIMARY KEY, value JSONB NOT NULL, description TEXT NOT NULL,
       updated_at BIGINT NOT NULL, updated_by VARCHAR(36) NULL

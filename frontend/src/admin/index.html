@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#070907">
   <title>GPTTool 管理后台</title>
   <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="rules.css">
 </head>
 <body>
   <section class="admin-login" id="adminLogin">
@@ -38,9 +39,9 @@
       <article class="panel table-panel"><div class="table" id="usersTable"></div></article>
     </section>
     <section class="page" id="page-rules">
-      <div class="heading"><div><p>COMPATIBILITY</p><h1>CDP 规则</h1><span>按官方 ChatGPT 版本下发操作规则，客户端无需更新。</span></div><button id="newRule">上传规则</button></div>
+      <div class="heading"><div><p>COMPATIBILITY</p><h1>CDP 规则</h1><span>按实测版本与平台匹配。新上传规则必须通过功能验证，自动获得最高优先级。</span></div><div class="actions"><button class="outline" id="refreshRules">刷新</button><button id="newRule">上传规则</button></div></div>
       <article class="panel table-panel"><div class="table" id="rulesTable"></div></article>
-      <dialog id="ruleDialog"><form method="dialog"><div class="dialog-head"><div><small>CDP RULE</small><h2>上传兼容规则</h2></div><button value="cancel" class="icon">×</button></div><label>规则 JSON<textarea id="ruleJson" spellcheck="false" placeholder='{"schemaVersion":1,"id":"...","selectors":{}}'></textarea></label><div class="row"><label>平台<select id="rulePlatform"><option value="all">全部</option><option value="darwin">macOS</option><option value="win32">Windows</option></select></label><label>优先级<input id="rulePriority" type="number" value="0"></label></div><p class="form-error" id="ruleError"></p><button type="button" id="saveRule">保存并立即下发</button></form></dialog>
+      <dialog id="ruleDialog"><form method="dialog"><div class="dialog-head"><div><small>CDP RULE</small><h2 id="ruleDialogTitle">上传已验证规则</h2></div><button value="cancel" class="icon" aria-label="关闭">×</button></div><label>从采集器导入 JSON 文件<input id="ruleFile" type="file" accept=".json,application/json"></label><label>规则 JSON<textarea id="ruleJson" spellcheck="false" placeholder="粘贴新版采集器验证通过的规则包"></textarea></label><p>修改选择器、版本或操作映射后必须重新实测；原验证报告不能用于修改后的规则。</p><div class="row"><label>平台<select id="rulePlatform"><option value="all">全部（仅旧规则）</option><option value="darwin">macOS</option><option value="win32">Windows</option></select></label><label>优先级<input id="rulePriority" type="number" min="-1000" max="2147483647" value="2147483647"></label></div><p class="form-error" id="ruleError"></p><button type="button" id="saveRule">验证并上传至最高优先级</button></form></dialog>
     </section>
     <section class="page" id="page-config">
       <div class="heading"><div><p>DATABASE CONFIG</p><h1>系统配置</h1><span>配置保存在 PostgreSQL，保存后无需重启服务。</span></div><button id="saveConfig">保存修改</button></div>

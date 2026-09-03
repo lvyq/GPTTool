@@ -45,7 +45,7 @@ export function createFrontendServer({
     const allow = {
       gateway: ['index.html', 'gateway.js', 'gateway.css', 'qr-decoder.js', 'gpttool-logo.png', 'apple-touch-icon.png'],
       remote: ['index.html', 'remote.js', 'remote.css', 'web-version.json', 'gpttool-logo.png', 'apple-touch-icon.png'],
-      admin: ['index.html', 'admin.js', 'admin.css'],
+      admin: ['index.html', 'admin.js', 'admin.css', 'rules.css'],
     };
     if (!allow[directory].includes(file)) { res.writeHead(404); res.end(); return; }
     const target = path.join(assetsDirectory, directory, file);

@@ -4,6 +4,16 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+### Added
+
+- Require private CDP rule collection to pass end-to-end composer, task, model, effort, speed, usage, send, reply and restore checks before publication.
+- Show rule upload time, last edit time and detailed validation results in the administrator console, with JSON import and editing controls.
+
+### Fixed
+
+- Reject unverified, wrong-platform or post-validation modified CDP rules at both token and administrator upload endpoints.
+- Confirm that a newly uploaded highest-priority rule is actually available from the public distribution endpoint before the collector reports success.
+
 ### Changed
 
 - Split Web portals and API relay into independent `frontend` and `backend` packages, builds and development processes.
