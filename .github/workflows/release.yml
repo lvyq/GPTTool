@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -46,7 +46,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       should_release: ${{ steps.release.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,7 +92,7 @@ jobs:
       GPTTOOL_UPDATE_MANIFEST_URL: ${{ secrets.UPDATE_MANIFEST_URL }}
       GPTTOOL_UPDATE_PUBLIC_KEY: ${{ secrets.UPDATE_PUBLIC_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -136,7 +136,7 @@ jobs:
       GPTTOOL_UPDATE_MANIFEST_URL: ${{ secrets.UPDATE_MANIFEST_URL }}
       GPTTOOL_UPDATE_PUBLIC_KEY: ${{ secrets.UPDATE_PUBLIC_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -175,7 +175,7 @@ jobs:
       UPDATE_SIGNING_KEY_B64: ${{ secrets.UPDATE_SIGNING_KEY_B64 }}
       UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
