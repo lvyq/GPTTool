@@ -10,12 +10,19 @@ const projectDirectory = path.join(testDirectory, '..');
 test('model badge opens settings directly and speed is loaded only on explicit settings actions', async () => {
   const source = await readFile(path.join(projectDirectory, 'src/remote-ui/remote.js'), 'utf8');
   const markup = await readFile(path.join(projectDirectory, 'src/remote-ui/index.html'), 'utf8');
-  assert.match(source, /ui.showModel.addEventListener\('click', showTaskSettings\)/);
+  assert.match(source, /ui.showModel.addEventListener\('click', showModelSettings\)/);
   assert.match(markup, /aria-label="设置模型、强度与速度"[^>]*aria-haspopup="dialog"/);
   assert.match(markup, /id="speedSelect"/);
-  assert.match(source, /await rpc\('composer.speed.set', \{ speed: ui.speedSelect.value, model: speedSnapshot.model \}\)/);
+  assert.match(source, /await rpc\('composer.settings.apply', draft\)/);
+  assert.doesNotMatch(source, /async function saveSpeed/);
+  const modelDialog = markup.match(/<dialog id="modelSettingsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+  const otherDialog = markup.match(/<dialog id="taskSettingsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+  assert.match(modelDialog, /id="speedSelect"[\s\S]*id="saveIntelligence"/);
+  assert.doesNotMatch(modelDialog, /autoApproval|saveSpeed/);
+  assert.match(otherDialog, /autoApprovalToggle/);
+  assert.doesNotMatch(otherDialog, /modelSlider|speedSelect/);
   assert.match(source, /if \(revision !== speedRevision\) return/);
-  assert.match(source, /请先应用模型设置，再选择该模型支持的速度/);
+  assert.match(source, /if \(intelligenceSaving \|\| modelSettingsLoading \|\| ui.saveIntelligence.disabled\) return/);
 });
 
 test('locks a newly opened task to the latest message until the user scrolls', async () => {
@@ -164,8 +171,8 @@ test('links each official model to only its supported reasoning effort slider st
   ]);
 
   assert.match(markup, /id="modelSlider"[\s\S]*id="effortSlider"/);
-  assert.match(markup, /模型与推理强度/);
-  assert.match(markup, /id="taskSettingsDialog"[\s\S]*id="modelSlider"[\s\S]*id="autoApprovalToggle"[\s\S]*<\/dialog>/);
+  assert.match(markup, /模型、推理强度与速度/);
+  assert.match(markup, /id="modelSettingsDialog"[\s\S]*id="modelSlider"[\s\S]*<\/dialog>[\s\S]*id="taskSettingsDialog"[\s\S]*id="autoApprovalToggle"/);
   assert.doesNotMatch(markup, /id="showModelSettings"/);
   assert.doesNotMatch(markup, /id="intelligenceDialog"/);
   assert.match(source, /intelligenceModels = normalizeModelOptions\(result\)/);

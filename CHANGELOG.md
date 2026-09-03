@@ -4,6 +4,13 @@ All notable changes to GPTTool will be documented in this file. The format is ba
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-09-03
+
+### Changed
+
+- Separate model settings from approval and compatibility settings into two dialogs.
+- Apply model, reasoning effort and speed from one button through a serialized operation, with duplicate-submit protection and explicit partial-failure reporting.
+
 ## [0.2.9] - 2026-09-03
 
 ### Added

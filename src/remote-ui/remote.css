@@ -1318,6 +1318,11 @@ header p {
 .task-settings-dialog .settings-status { margin: 4px 0; }
 .task-settings-dialog .speed-field { margin: 8px 0; }
 
+.model-settings-dialog { width: min(420px, calc(100vw - 28px)); }
+.model-settings-dialog h2 { margin-top: 0; }
+.model-settings-footer { position: sticky; bottom: -1px; padding: 12px 0 0; background: #111211; z-index: 2; }
+.model-settings-footer .settings-save { width: 100%; margin-top: 10px; }
+
 .settings-section + .settings-section {
   margin-top: 22px;
   padding-top: 22px;

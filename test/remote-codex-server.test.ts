@@ -872,6 +872,60 @@ test('keeps automatic approval opt-in disabled by default and restores the saved
   }
 });
 
+test('unified model settings serialize application and distinguish a speed failure from full success', async () => {
+  class SettingsCodex extends FakeCodex {
+    currentModel = 'Sol';
+    currentSpeed = 'standard';
+    supported = true;
+    override async request<T>(method: string, params?: unknown): Promise<T> {
+      const input = params as { model?: string; speed?: string; effort?: string } | undefined;
+      if (method === 'composer/preferences/set') {
+        this.calls.push({ method, params });
+        this.currentModel = input!.model!;
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return { model: this.currentModel, effort: input!.effort, models: [], efforts: [] } as T;
+      }
+      if (method === 'composer/speed/get' || method === 'composer/speed/set') {
+        this.calls.push({ method, params });
+        if (method.endsWith('/set')) {
+          assert.equal(input!.model, this.currentModel);
+          this.currentSpeed = input!.speed!;
+        }
+        return { model: this.currentModel, available: this.supported, current: this.currentSpeed,
+          options: this.supported ? [{ value: 'standard' }, { value: 'fast' }] : [] } as T;
+      }
+      return super.request(method, params);
+    }
+  }
+  const directory = await mkdtemp(path.join(tmpdir(), 'gpttool-settings-'));
+  const codex = new SettingsCodex();
+  const server = new RemoteCodexServer({ codex, assetsDirectory: path.resolve('src/remote-ui'), stateDirectory: directory, port: 0 });
+  try {
+    await server.start();
+    const cookie = await authorize(server);
+    const url = `ws://127.0.0.1:${server.port}/ws`;
+    const [first, second] = await Promise.all([
+      websocketRequest(url, cookie, { id: 91, type: 'composer.settings.apply', model: 'Terra', effort: 'medium', speed: 'fast' }),
+      websocketRequest(url, cookie, { id: 92, type: 'composer.settings.apply', model: 'Sol', effort: 'high', speed: 'standard' }),
+    ]);
+    assert.equal((first.result as { applied: boolean }).applied, true);
+    assert.equal((second.result as { applied: boolean }).applied, true);
+    assert.deepEqual(codex.calls.filter(call => call.method === 'composer/preferences/set' || call.method.startsWith('composer/speed')).map(call => call.method), [
+      'composer/preferences/set', 'composer/speed/get', 'composer/speed/set',
+      'composer/preferences/set', 'composer/speed/get', 'composer/speed/set',
+    ]);
+    codex.supported = false;
+    const partial = await websocketRequest(url, cookie, { id: 93, type: 'composer.settings.apply', model: 'Luna', effort: 'medium', speed: 'fast' });
+    assert.equal((partial.result as { applied: boolean }).applied, false);
+    assert.match((partial.result as { message: string }).message, /模型与强度已应用，但速度未完成/);
+    const noSpeed = await websocketRequest(url, cookie, { id: 94, type: 'composer.settings.apply', model: 'Luna', effort: 'medium' });
+    assert.equal((noSpeed.result as { applied: boolean }).applied, true);
+  } finally {
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 function websocketRequest(url: string, cookie: string, request: Record<string, unknown> = { id: 7, type: 'thread.list' }): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { headers: { cookie } });

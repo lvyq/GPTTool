@@ -13,7 +13,7 @@
     <title>GPTTool Remote Codex</title>
     <link rel="icon" href="gpttool-logo.png?v=20260726-fullbleed" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260726-fullbleed" />
-    <link rel="stylesheet" href="remote.css?v=20260903-model-settings" />
+    <link rel="stylesheet" href="remote.css?v=20260903-model-dialogs" />
   </head>
   <body>
     <div class="shell">
@@ -35,7 +35,7 @@
             <p id="composerError" class="header-error" role="alert"></p>
           </div>
           <div class="header-actions">
-        <button id="showModel" type="button" class="header-icon-button model-summary-button" aria-label="设置模型、强度与速度" title="设置模型、强度与速度" aria-haspopup="dialog" aria-controls="taskSettingsDialog"><span id="modelBadge" class="model-badge" aria-hidden="true">--</span></button>
+        <button id="showModel" type="button" class="header-icon-button model-summary-button" aria-label="设置模型、强度与速度" title="设置模型、强度与速度" aria-haspopup="dialog" aria-controls="modelSettingsDialog"><span id="modelBadge" class="model-badge" aria-hidden="true">--</span></button>
             <div id="modelPopover" class="usage-popover model-popover hidden" role="status">
               <strong id="modelDetail">正在读取当前模型…</strong>
               <small id="modelEffortDetail">设置与本机官方客户端同步</small>
@@ -161,13 +161,11 @@
         <button id="confirmRename" type="submit" class="primary rename-confirm">保存名称</button>
       </form>
     </dialog>
-    <dialog id="taskSettingsDialog" class="task-settings-dialog">
-      <button id="closeTaskSettings" type="button" class="settings-close" aria-label="关闭任务设置">×</button>
-      <span class="eyebrow">任务设置</span>
-      <h2>模型、强度与速度</h2>
-      <p id="compatibilityStatus" role="status" hidden></p>
+    <dialog id="modelSettingsDialog" class="task-settings-dialog model-settings-dialog" aria-labelledby="modelSettingsTitle">
+      <button id="closeModelSettings" type="button" class="settings-close" aria-label="关闭模型设置">×</button>
+      <h2 id="modelSettingsTitle">模型设置</h2>
       <section class="settings-section">
-        <div class="settings-section-heading"><strong>模型与推理强度</strong><small>选项来自本机官方客户端，不同模型会显示各自支持的强度。</small></div>
+        <div class="settings-section-heading"><small>模型、推理强度与速度统一应用到官方客户端。</small></div>
         <div class="settings-field slider-field">
           <div class="slider-heading"><span>模型</span><strong id="modelValue">正在读取…</strong></div>
           <div class="discrete-slider">
@@ -184,16 +182,22 @@
           </div>
           <select id="effortSelect" class="slider-select" tabindex="-1" aria-hidden="true"></select>
         </div>
-        <button id="saveIntelligence" type="button" class="primary settings-save">应用模型设置</button>
-        <p id="intelligenceStatus" class="settings-status" role="status" aria-live="polite">正在读取官方客户端设置…</p>
         <div class="settings-field speed-field">
           <label for="speedSelect">响应速度</label>
           <select id="speedSelect" disabled><option value="">正在读取…</option></select>
-          <small>速度选项与当前已应用的模型一致。快速模式可能消耗更多额度。</small>
-          <button id="saveSpeed" type="button" class="settings-save" disabled>应用速度</button>
+          <small>快速模式可能消耗更多额度。</small>
           <p id="speedStatus" class="settings-status" role="status" aria-live="polite"></p>
         </div>
       </section>
+      <div class="model-settings-footer">
+        <p id="intelligenceStatus" class="settings-status" role="status" aria-live="polite">正在读取官方客户端设置…</p>
+        <button id="saveIntelligence" type="button" class="primary settings-save">应用设置</button>
+      </div>
+    </dialog>
+    <dialog id="taskSettingsDialog" class="task-settings-dialog" aria-labelledby="taskSettingsTitle">
+      <button id="closeTaskSettings" type="button" class="settings-close" aria-label="关闭其他设置">×</button>
+      <h2 id="taskSettingsTitle">其他设置</h2>
+      <p id="compatibilityStatus" role="status" hidden></p>
       <section class="settings-section">
         <div class="settings-section-heading"><strong>审批与后台控制</strong><small>控制当前设备上的自动审批行为。</small></div>
         <label class="settings-toggle">
@@ -212,6 +216,6 @@
       </div>
       <div class="image-viewer-stage"><img id="imageViewerImage" alt="" /></div>
     </dialog>
-    <script src="remote.js?v=20260903-model-settings"></script>
+    <script src="remote.js?v=20260903-model-dialogs"></script>
   </body>
 </html>

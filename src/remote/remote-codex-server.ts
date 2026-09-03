@@ -489,6 +489,8 @@ export class RemoteCodexServer {
         }));
       case 'composer.preferences.set':
         return this.#setComposerPreferences(message.model, message.effort);
+      case 'composer.settings.apply':
+        return this.#applyComposerSettings(requiredString(message.model, 'model'), requiredString(message.effort, 'effort'), message.speed === undefined ? undefined : requiredString(message.speed, 'speed'));
       case 'account.usage.get':
         return this.#accountUsage();
       case 'compatibility.status.get':
@@ -1261,6 +1263,30 @@ export class RemoteCodexServer {
       this.options.codex.request('composer/preferences/set', { model, effort }));
     this.#storeComposerPreferences(result);
     return result;
+  }
+
+  async #applyComposerSettings(model: string, effort: string, wantedSpeed?: string): Promise<unknown> {
+    // One serialized operation: other Web clients cannot interleave a model
+    // change between applying the preferences and validating the new speed.
+    return this.#withOfficialSettings(async () => {
+      const preferences = await this.options.codex.request<{ model: string }>('composer/preferences/set', { model, effort });
+      this.#storeComposerPreferences(preferences);
+      let speed: { available: boolean; current?: string; model?: string; options: Array<{ value: string; label: string }>; message?: string } | undefined;
+      try {
+        speed = await this.options.codex.request('composer/speed/get');
+        if (wantedSpeed !== undefined) {
+          if (!speed?.available || !speed.options.some(option => option.value === wantedSpeed)) throw new Error('新模型不支持所选速度，请重新选择');
+          if (speed.current !== wantedSpeed) speed = await this.options.codex.request('composer/speed/set', { speed: wantedSpeed, model: preferences.model });
+          if (speed?.current !== wantedSpeed || speed.model !== preferences.model) throw new Error('速度尚未得到官方确认');
+        }
+        return { applied: true, preferences, speed };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Report partial application explicitly; do not claim all three
+        // settings succeeded or silently overwrite the user's chosen speed.
+        return { applied: false, preferences, speed, message: `模型与强度已应用，但速度未完成：${message}` };
+      }
+    });
   }
 
   async #accountUsage(): Promise<unknown> {
