@@ -151,7 +151,12 @@ function createWindow(): void {
 
 function createTray(): void {
   const icon = nativeImage.createFromPath(path.join(moduleDirectory, '..', 'renderer', 'gpttool-logo.png'));
-  tray = new Tray(icon.resize({ width: 18, height: 18 }));
+  // Keep the existing GPTTool mark, but let macOS render it as a menu-bar
+  // template image (white glyph with transparent background) instead of a
+  // full-colour application thumbnail. The application/Dock icon is separate.
+  const trayIcon = icon.resize({ width: 18, height: 18 });
+  if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
+  tray = new Tray(trayIcon);
   tray.setToolTip('GPTTool');
   tray.on('click', showWindow);
   updateTrayMenu();
