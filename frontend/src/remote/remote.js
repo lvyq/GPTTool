@@ -16,7 +16,7 @@
   }
   const $ = (id) => document.getElementById(id);
   const ids = ['sidebar', 'drawerBackdrop', 'closeSidebar', 'threadList', 'connection', 'newThread', 'emptyNew', 'chooseExistingTask', 'existingTaskCount', 'refreshThreads', 'showThreads', 'threadTitle', 'threadMeta', 'runStatus', 'emptyState', 'messages', 'approvalArea', 'approvalRequests', 'queuePanel', 'queueTitle', 'queueCount', 'queueToggle', 'queueList', 'composer', 'prompt', 'composerMode', 'composerError', 'voiceInput', 'voiceModeToggle', 'voiceStatus', 'send', 'stopTurn', 'attachFiles', 'composerToolsMenu', 'modeGoal', 'modePlan', 'menuAttach', 'menuAttachCount', 'filePicker', 'attachmentTray', 'toast', 'newThreadDialog', 'closeNewThreadDialog', 'newThreadForm', 'directoryPickerView', 'projectDirectoryList', 'browseProjectDirectory', 'directoryBrowser', 'directoryBrowserUp', 'directoryBrowserPath', 'directoryBrowserList', 'closeDirectoryBrowser', 'directoryCreateName', 'createProjectDirectory', 'selectCurrentDirectory', 'newThreadStatus', 'confirmNewThread', 'renameDialog', 'closeRenameDialog', 'renameForm', 'renameInput', 'renameStatus', 'confirmRename', 'showModel', 'modelBadge', 'modelPopover', 'modelDetail', 'modelEffortDetail', 'showUsage', 'usagePercent', 'usagePopover', 'usageDetail', 'usageReset', 'showTaskSettings', 'taskSettingsDialog', 'closeTaskSettings', 'autoApprovalToggle', 'autoApprovalStatus', 'modelSelect', 'modelSlider', 'modelValue', 'modelTicks', 'effortSelect', 'effortSlider', 'effortValue', 'effortTicks', 'saveIntelligence', 'intelligenceStatus', 'imageViewer', 'imageViewerName', 'imageViewerImage', 'imageViewerDownload', 'closeImageViewer'];
-  ids.push('speedSelect', 'speedStatus', 'modelSettingsDialog', 'closeModelSettings');
+  ids.push('speedSelect', 'speedStatus', 'modelSettingsDialog', 'closeModelSettings', 'usageAccountName', 'usagePlan', 'usageHeadlinePercent', 'usageWindows');
   const ui = Object.fromEntries(ids.map((id) => [id, $(id)]));
   const shell = document.querySelector('.shell');
   let socket;
@@ -829,6 +829,16 @@
     if (!result?.available || !Number.isFinite(Number(result.percentage))) return;
     usageLoadedAt = Date.now();
     const percentage = Math.max(0, Math.min(100, Math.round(Number(result.percentage))));
+    if (ui.usageHeadlinePercent) ui.usageHeadlinePercent.textContent = `${percentage}%`;
+    if (ui.usageWindows) {
+      const windows = Array.isArray(result.windows) && result.windows.length ? result.windows : [{ label: result.period || '当前周期', percentage, resetAt: result.resetAt }];
+      ui.usageWindows.replaceChildren(...windows.map((item) => {
+        const row = document.createElement('div'); row.className = 'usage-window-row';
+        const label = document.createElement('span'); label.textContent = item.kind === 'reserve' ? `gpt-reserve 限额 · ${item.label}` : item.label;
+        const value = document.createElement('span'); value.textContent = `${Math.round(Number(item.percentage))}%${item.resetAt ? `  ${item.resetAt}` : ''}`;
+        row.append(label, value); return row;
+      }));
+    }
     const exhausted = percentage <= 0;
     ui.usagePercent.textContent = `${percentage}`;
     ui.usagePercent.classList.toggle('three-digits', percentage >= 100);
@@ -978,7 +988,7 @@
     const normalized = model.replace(/^gpt[-\s]*/i, '').trim();
     const parts = normalized.split(/[-\s]+/).filter(Boolean);
     const family = parts.at(-1) || normalized;
-    const compact = /^(sol|terra|luna)$/i.test(family) ? family : normalized;
+    const compact = /^(sol|terra|luna|astra)$/i.test(family) ? family : normalized;
     ui.modelBadge.textContent = compact.slice(0, 5);
     ui.modelBadge.classList.toggle('long', compact.length > 3);
     ui.showModel.title = `当前模型：${model} · 点击设置模型、强度与速度`;

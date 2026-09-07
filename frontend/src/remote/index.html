@@ -42,7 +42,12 @@
             </div>
             <button id="showUsage" type="button" class="header-icon-button usage-summary-button" aria-label="查看剩余额度" title="正在读取剩余额度" aria-expanded="false"><span class="usage-ring" aria-hidden="true"><span id="usagePercent">--</span></span></button>
             <div id="usagePopover" class="usage-popover hidden" role="status">
-              <strong id="usageDetail">正在读取剩余额度…</strong>
+              <div class="usage-account"><span class="usage-account-avatar">G</span><span><strong id="usageAccountName">GPTTool</strong><small id="usagePlan">官方客户端</small></span></div>
+              <div class="usage-popover-rule"></div>
+              <div class="usage-headline"><span>◔</span><strong>剩余用量</strong><span id="usageHeadlinePercent">--%</span><span>⌄</span></div>
+              <div id="usageWindows" class="usage-windows"></div>
+              <div class="usage-popover-rule"></div>
+              <strong id="usageDetail" class="sr-only">正在读取剩余额度…</strong>
               <small id="usageReset">数据来自本机官方客户端</small>
             </div>
             <button id="showTaskSettings" type="button" class="header-icon-button task-settings-button" aria-label="打开任务设置" title="任务设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19 13.2 1.4 1.1-1.8 3.1-1.7-.7a7.5 7.5 0 0 1-2.1 1.2l-.2 1.8h-3.6l-.2-1.8a7.5 7.5 0 0 1-2.1-1.2l-1.7.7-1.8-3.1 1.4-1.1a7.9 7.9 0 0 1 0-2.4L5.2 9.7 7 6.6l1.7.7a7.5 7.5 0 0 1 2.1-1.2l.2-1.8h3.6l.2 1.8a7.5 7.5 0 0 1 2.1 1.2l1.7-.7 1.8 3.1-1.4 1.1a7.9 7.9 0 0 1 0 2.4Z"/></svg></button>

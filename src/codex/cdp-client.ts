@@ -56,6 +56,7 @@ export interface AccountUsageInfo {
   percentage?: number;
   period?: string;
   resetAt?: string;
+  windows?: Array<{ label: string; percentage: number; resetAt?: string; kind?: 'primary' | 'reserve' | 'secondary' }>;
   message: string;
   enforced?: boolean;
   provider?: string;
@@ -505,19 +506,28 @@ export class CdpClient extends EventEmitter {
         .map((element) => element.textContent)
         .map((value) => String(value || '').replace(/\\s+/g, ' ').trim())
         .filter(Boolean);
-      const match = texts
-        .map((text) => text.match(/(\\d+\\s*(?:小时|时|周|天|月))\\s*(\\d{1,3})%\\s*[·•]?\\s*(\\d{1,2}月\\d{1,2}日)/))
-        .filter(Boolean)
-        .at(-1);
-      if (!match) return null;
-      const percentage = Math.max(0, Math.min(100, Number(match[2])));
-      const period = match[1].replace(/\\s+/g, ' ');
+      const windows = [];
+      for (const text of texts) {
+        const matches = [...text.matchAll(/(\\d+\\s*(?:小时|时|周|天|月))\\s*(\\d{1,3})%\\s*[·•]?\\s*(\\d{1,2}月\\d{1,2}日(?:\\s*\\d{1,2}:\\d{2})?)/g)];
+        for (const match of matches) {
+          const percentage = Math.max(0, Math.min(100, Number(match[2])));
+          const period = match[1].replace(/\\s+/g, ' ');
+          const resetAt = match[3].trim();
+          const context = text.slice(Math.max(0, match.index - 48), match.index);
+          windows.push({ label: period, percentage, resetAt, kind: /reserve|储备|限额/i.test(context) ? 'reserve' : windows.length ? 'secondary' : 'primary' });
+        }
+      }
+      if (!windows.length) return null;
+      const primary = windows.find((item) => item.kind !== 'reserve') || windows[0];
+      const percentage = primary.percentage;
+      const period = primary.label;
       return {
         available: true,
         percentage,
         period,
-        resetAt: match[3],
-        message: period + '剩余 ' + percentage + '%，' + match[3] + '重置'
+        resetAt: primary.resetAt,
+        windows,
+        message: period + '剩余 ' + percentage + '%，' + primary.resetAt + '重置'
       };
     })()`);
   }
