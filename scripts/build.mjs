@@ -40,4 +40,5 @@ await build({
 });
 
 await cp('src/renderer', 'dist/renderer', { recursive: true });
+await cp('assets/tray-white-preview.png', 'dist/renderer/tray-white-preview.png');
 await cp('frontend/dist/remote', 'dist/remote-ui', { recursive: true });

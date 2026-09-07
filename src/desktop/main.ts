@@ -150,10 +150,22 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  const icon = nativeImage.createFromPath(path.join(moduleDirectory, '..', 'renderer', 'gpttool-logo.png'));
-  // Keep the existing GPTTool mark, but let macOS render it as a menu-bar
-  // template image (white glyph with transparent background) instead of a
-  // full-colour application thumbnail. The application/Dock icon is separate.
+  let icon = nativeImage.createFromPath(path.join(moduleDirectory, '..', 'renderer', 'gpttool-logo.png'));
+  if (process.platform === 'darwin') {
+    const source = nativeImage.createFromPath(path.join(moduleDirectory, '..', 'renderer', 'tray-white-preview.png'));
+    if (!source.isEmpty()) {
+      const bitmap = source.toBitmap();
+      const background = bitmap[0] ?? 0;
+      // The supplied white mark has a flat gray preview background. Recover
+      // its alpha before resizing so macOS renders the mark, not a square.
+      for (let offset = 0; offset < bitmap.length; offset += 4) {
+        const brightness = Math.min(bitmap[offset] ?? 0, bitmap[offset + 1] ?? 0, bitmap[offset + 2] ?? 0);
+        bitmap[offset + 3] = Math.round(Math.max(0, Math.min(1, (brightness - background) / Math.max(1, 255 - background))) * 255);
+        bitmap[offset] = bitmap[offset + 1] = bitmap[offset + 2] = 0;
+      }
+      icon = nativeImage.createFromBitmap(bitmap, source.getSize());
+    }
+  }
   const trayIcon = icon.resize({ width: 18, height: 18 });
   if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
   tray = new Tray(trayIcon);
