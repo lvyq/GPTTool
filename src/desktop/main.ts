@@ -166,7 +166,7 @@ function createTray(): void {
       icon = nativeImage.createFromBitmap(bitmap, source.getSize());
     }
   }
-  const trayIcon = icon.resize({ width: 18, height: 18 });
+  const trayIcon = icon.resize({ width: 20, height: 20 });
   if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
   tray = new Tray(trayIcon);
   tray.setToolTip('GPTTool');
