@@ -119,7 +119,7 @@ jobs:
           cp "$(find release-x64 -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-x64.dmg"
           npx electron-builder --mac dmg --universal --publish never --config.directories.output=release-universal
           cp "$(find release-universal -maxdepth 1 -name '*.dmg' -print -quit)" "release-final/GPTTool-${version}-mac-universal.dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-installers
           path: release-final/*.dmg
@@ -159,7 +159,7 @@ jobs:
           npx electron-builder --win nsis --x64 --publish never --config.directories.output=release-windows
           mkdir -p release-final
           cp "$(find release-windows -maxdepth 1 -name '*.exe' -print -quit)" "release-final/GPTTool-${version}-windows-x64.exe"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: release-final/*.exe
